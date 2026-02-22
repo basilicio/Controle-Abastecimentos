@@ -192,7 +192,7 @@ export default function App() {
           <SidebarItem icon={<History size={18} />} label="Movimentação" active={activeTab === 'movements'} onClick={() => { setActiveTab('movements'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<BarChart3 size={18} />} label="Relatórios" active={activeTab === 'reports'} onClick={() => { setActiveTab('reports'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<Box size={18} />} label="Estoque Tanque" active={activeTab === 'tank'} onClick={() => { setActiveTab('tank'); setIsSidebarOpen(false); }} />
-          <SidebarItem icon={<Zap size={18} />} label="Insights IA" active={activeTab === 'ai'} onClick={() => { setActiveTab('ai'); setIsSidebarOpen(false); }} />
+          {currentUser.role === 'admin' && <SidebarItem icon={<Zap size={18} />} label="Insights IA" active={activeTab === 'ai'} onClick={() => { setActiveTab('ai'); setIsSidebarOpen(false); }} />}
           {currentUser.role === 'admin' && <SidebarItem icon={<ShieldAlert size={18} />} label="Usuários" active={activeTab === 'users'} onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} />}
         </ul>
         
@@ -235,7 +235,7 @@ export default function App() {
         }} />}
         {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
         {activeTab === 'tank' && <TankView tank={tank} movements={movements} onSync={refreshData} />}
-        {activeTab === 'ai' && <AIInsightsView vehicles={vehicles} movements={movements} analysis={aiAnalysis} setAnalysis={setAiAnalysis} isAnalyzing={isAnalyzing} setIsAnalyzing={setIsAnalyzing} />}
+        {activeTab === 'ai' && currentUser.role === 'admin' && <AIInsightsView vehicles={vehicles} movements={movements} analysis={aiAnalysis} setAnalysis={setAiAnalysis} isAnalyzing={isAnalyzing} setIsAnalyzing={setIsAnalyzing} />}
         {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} onRefresh={refreshData} />}
       </main>
 
@@ -785,29 +785,58 @@ function DashboardView({ tank, movements, vehicles }: any) {
 }
 
 function ReportsView({ movements, vehicles, users }: any) {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+
   const summaryByVehicle = vehicles.map((v: any) => {
-    const vMovs = movements.filter((m: any) => m.veiculo_id === v.id).sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+    const vMovs = movements
+      .filter((m: any) => m.veiculo_id === v.id)
+      .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+    
     const totalLiters = Math.abs(vMovs.reduce((acc: number, curr: any) => acc + curr.litros, 0));
     
-    // Calcular média simples do período considerando leitura inicial
     const initialReading = v.usa_medida === MedidaUso.KM ? (v.odometro_inicial ?? v.odometro_atual ?? 0) : (v.horimetro_inicial ?? v.horimetro_atual ?? 0);
     const lastReading = vMovs.length > 0 ? (vMovs[vMovs.length - 1].km_informado || vMovs[vMovs.length - 1].horimetro_informado || 0) : initialReading;
     
-    const diff = lastReading - initialReading;
+    // Total
+    const diffTotal = lastReading - initialReading;
+
+    // Mensal
+    const movsBeforeMonth = vMovs.filter((m: any) => new Date(m.data_hora) < startOfMonth);
+    const readingStartMonth = movsBeforeMonth.length > 0 
+      ? (movsBeforeMonth[movsBeforeMonth.length - 1].km_informado || movsBeforeMonth[movsBeforeMonth.length - 1].horimetro_informado || 0)
+      : initialReading;
+    const movsInMonth = vMovs.filter((m: any) => new Date(m.data_hora) >= startOfMonth);
+    const readingEndMonth = movsInMonth.length > 0
+      ? (movsInMonth[movsInMonth.length - 1].km_informado || movsInMonth[movsInMonth.length - 1].horimetro_informado || 0)
+      : readingStartMonth;
+    const diffMonth = readingEndMonth - readingStartMonth;
+
+    // Anual
+    const movsBeforeYear = vMovs.filter((m: any) => new Date(m.data_hora) < startOfYear);
+    const readingStartYear = movsBeforeYear.length > 0
+      ? (movsBeforeYear[movsBeforeYear.length - 1].km_informado || movsBeforeYear[movsBeforeYear.length - 1].horimetro_informado || 0)
+      : initialReading;
+    const movsInYear = vMovs.filter((m: any) => new Date(m.data_hora) >= startOfYear);
+    const readingEndYear = movsInYear.length > 0
+      ? (movsInYear[movsInYear.length - 1].km_informado || movsInYear[movsInYear.length - 1].horimetro_informado || 0)
+      : readingStartYear;
+    const diffYear = readingEndYear - readingStartYear;
     
     let media = "N/A";
-    if (totalLiters > 0 && diff > 0) {
-      media = v.usa_medida === MedidaUso.KM ? `${(diff / totalLiters).toFixed(2)} KM/L` : `${(totalLiters / diff).toFixed(2)} L/H`;
+    if (totalLiters > 0 && diffTotal > 0) {
+      media = v.usa_medida === MedidaUso.KM ? `${(diffTotal / totalLiters).toFixed(2)} KM/L` : `${(totalLiters / diffTotal).toFixed(2)} L/H`;
     }
 
-    return { ...v, totalLiters, media };
+    return { ...v, totalLiters, media, diffTotal, diffMonth, diffYear };
   });
 
   return (
     <div className="bg-white p-6 md:p-10 rounded-[32px] border border-slate-200 shadow-sm">
       <div className="flex items-center gap-3 mb-8">
         <BarChart3 className="text-blue-600" size={28} />
-        <h2 className="text-xl md:text-2xl font-black tracking-tight">Relatório de Performance</h2>
+        <h2 className="text-xl md:text-2xl font-black tracking-tight">Relatório de Performance e Uso</h2>
       </div>
       
       {/* Desktop Table */}
@@ -816,16 +845,35 @@ function ReportsView({ movements, vehicles, users }: any) {
           <thead className="bg-slate-50 border-b">
             <tr>
               <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Ativo</th>
+              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Uso Total</th>
+              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Uso Mensal</th>
+              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Uso Anual</th>
               <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Consumo Total</th>
-              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Média Período</th>
+              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Média Geral</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {summaryByVehicle.map(s => (
               <tr key={s.id} className="hover:bg-slate-50">
-                <td className="px-6 py-5"><div className="font-black uppercase text-sm">{s.placa_ou_prefixo}</div><div className="text-[10px] text-slate-400 font-bold uppercase">{s.modelo}</div></td>
+                <td className="px-6 py-5">
+                  <div className="font-black uppercase text-sm">{s.placa_ou_prefixo}</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">{s.modelo}</div>
+                </td>
+                <td className="px-6 py-5 text-center font-bold text-slate-600">
+                  {s.diffTotal.toLocaleString()} {s.usa_medida === MedidaUso.KM ? 'KM' : 'H'}
+                </td>
+                <td className="px-6 py-5 text-center font-bold text-slate-500">
+                  {s.diffMonth.toLocaleString()} {s.usa_medida === MedidaUso.KM ? 'KM' : 'H'}
+                </td>
+                <td className="px-6 py-5 text-center font-bold text-slate-500">
+                  {s.diffYear.toLocaleString()} {s.usa_medida === MedidaUso.KM ? 'KM' : 'H'}
+                </td>
                 <td className="px-6 py-5 text-center font-bold text-slate-700">{s.totalLiters.toLocaleString()} L</td>
-                <td className="px-6 py-5 text-center"><div className="bg-blue-50 text-blue-600 text-xs font-black px-3 py-1.5 rounded-full inline-block">{s.media}</div></td>
+                <td className="px-6 py-5 text-center">
+                  <div className="bg-blue-50 text-blue-600 text-xs font-black px-3 py-1.5 rounded-full inline-block">
+                    {s.media}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -835,14 +883,35 @@ function ReportsView({ movements, vehicles, users }: any) {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
         {summaryByVehicle.map(s => (
-          <div key={s.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
-            <div>
-              <div className="font-black uppercase text-sm">{s.placa_ou_prefixo}</div>
-              <div className="text-[10px] text-slate-400 font-bold uppercase">{s.modelo}</div>
+          <div key={s.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="font-black uppercase text-base">{s.placa_ou_prefixo}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase">{s.modelo}</div>
+              </div>
+              <div className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                {s.media}
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-black text-slate-700">{s.totalLiters.toLocaleString()} L</div>
-              <div className="text-[10px] font-black text-blue-600 uppercase">{s.media}</div>
+            
+            <div className="grid grid-cols-3 gap-2 py-3 border-y border-slate-200/50">
+              <div className="text-center">
+                <div className="text-[8px] font-black text-slate-400 uppercase mb-1">Total</div>
+                <div className="text-[10px] font-bold text-slate-700">{s.diffTotal.toLocaleString()}{s.usa_medida === MedidaUso.KM ? 'K' : 'H'}</div>
+              </div>
+              <div className="text-center border-x border-slate-200/50">
+                <div className="text-[8px] font-black text-slate-400 uppercase mb-1">Mensal</div>
+                <div className="text-[10px] font-bold text-slate-700">{s.diffMonth.toLocaleString()}{s.usa_medida === MedidaUso.KM ? 'K' : 'H'}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[8px] font-black text-slate-400 uppercase mb-1">Anual</div>
+                <div className="text-[10px] font-bold text-slate-700">{s.diffYear.toLocaleString()}{s.usa_medida === MedidaUso.KM ? 'K' : 'H'}</div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Consumo Total</span>
+              <span className="text-sm font-black text-slate-900">{s.totalLiters.toLocaleString()} L</span>
             </div>
           </div>
         ))}
