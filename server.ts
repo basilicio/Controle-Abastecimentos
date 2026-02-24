@@ -24,85 +24,97 @@ const defaultData: Data = {
   }]
 };
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+// Database setup
+let db: any;
 
-  // Database setup
-  const db = await JSONFilePreset<Data>('db.json', defaultData);
+async function initDb() {
+  if (!db) {
+    db = await JSONFilePreset<Data>(process.env.VERCEL ? '/tmp/db.json' : 'db.json', defaultData);
+  }
+  return db;
+}
 
-  app.use(cors());
-  app.use(express.json());
+const app = express();
+const PORT = 3000;
 
-  // API Routes
-  app.get('/api/data', (req, res) => {
-    res.json(db.data);
-  });
+app.use(cors());
+app.use(express.json());
 
-  app.post('/api/put/:store', async (req, res) => {
-    const { store } = req.params;
-    const item = req.body;
-    
-    if (store === 'veiculos') {
-      const index = db.data.veiculos.findIndex(v => v.id === item.id);
-      if (index > -1) db.data.veiculos[index] = item;
-      else db.data.veiculos.push(item);
-    } else if (store === 'movements') {
-      const index = db.data.movements.findIndex(m => m.id === item.id);
-      if (index > -1) db.data.movements[index] = item;
-      else db.data.movements.push(item);
-    } else if (store === 'users') {
-      const index = db.data.users.findIndex(u => u.id === item.id);
-      if (index > -1) db.data.users[index] = item;
-      else db.data.users.push(item);
-    } else if (store === 'tanque') {
-      const index = db.data.tanque.findIndex(t => t.id === item.id);
-      if (index > -1) db.data.tanque[index] = item;
-      else db.data.tanque.push(item);
-    }
+// API Routes
+app.get('/api/data', async (req, res) => {
+  const database = await initDb();
+  res.json(database.data);
+});
 
-    await db.write();
-    res.json({ success: true });
-  });
-
-  app.delete('/api/delete/:store/:id', async (req, res) => {
-    const { store, id } = req.params;
-    console.log(`Deleting from ${store} with id ${id}`);
-    
-    if (store === 'veiculos') {
-      db.data.veiculos = db.data.veiculos.filter(v => String(v.id) !== String(id));
-    } else if (store === 'movements') {
-      db.data.movements = db.data.movements.filter(m => String(m.id) !== String(id));
-    } else if (store === 'users') {
-      db.data.users = db.data.users.filter(u => String(u.id) !== String(id));
-    } else if (store === 'tanque') {
-      db.data.tanque = db.data.tanque.filter(t => String(t.id) !== String(id));
-    }
-
-    await db.write();
-    res.json({ success: true });
-  });
-
-  app.post('/api/import', async (req, res) => {
-    db.data = req.body;
-    await db.write();
-    res.json({ success: true });
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static('dist'));
+app.post('/api/put/:store', async (req, res) => {
+  const database = await initDb();
+  const { store } = req.params;
+  const item = req.body;
+  
+  if (store === 'veiculos') {
+    const index = database.data.veiculos.findIndex((v: any) => v.id === item.id);
+    if (index > -1) database.data.veiculos[index] = item;
+    else database.data.veiculos.push(item);
+  } else if (store === 'movements') {
+    const index = database.data.movements.findIndex((m: any) => m.id === item.id);
+    if (index > -1) database.data.movements[index] = item;
+    else database.data.movements.push(item);
+  } else if (store === 'users') {
+    const index = database.data.users.findIndex((u: any) => u.id === item.id);
+    if (index > -1) database.data.users[index] = item;
+    else database.data.users.push(item);
+  } else if (store === 'tanque') {
+    const index = database.data.tanque.findIndex((t: any) => t.id === item.id);
+    if (index > -1) database.data.tanque[index] = item;
+    else database.data.tanque.push(item);
   }
 
+  await database.write();
+  res.json({ success: true });
+});
+
+app.delete('/api/delete/:store/:id', async (req, res) => {
+  const database = await initDb();
+  const { store, id } = req.params;
+  
+  if (store === 'veiculos') {
+    database.data.veiculos = database.data.veiculos.filter((v: any) => String(v.id) !== String(id));
+  } else if (store === 'movements') {
+    database.data.movements = database.data.movements.filter((m: any) => String(m.id) !== String(id));
+  } else if (store === 'users') {
+    database.data.users = database.data.users.filter((u: any) => String(u.id) !== String(id));
+  } else if (store === 'tanque') {
+    database.data.tanque = database.data.tanque.filter((t: any) => String(t.id) !== String(id));
+  }
+
+  await database.write();
+  res.json({ success: true });
+});
+
+app.post('/api/import', async (req, res) => {
+  const database = await initDb();
+  database.data = req.body;
+  await database.write();
+  res.json({ success: true });
+});
+
+// Vite middleware for development
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
+  });
+  app.use(vite.middlewares);
+} else {
+  app.use(express.static('dist'));
+}
+
+// Only listen if not running as a Vercel function
+if (!process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+export default app;

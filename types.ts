@@ -11,7 +11,9 @@ export enum MedidaUso {
 
 export enum TipoMovimento {
   ABASTECIMENTO = 'ABASTECIMENTO',
-  CONSUMO = 'CONSUMO'
+  CONSUMO = 'CONSUMO',
+  ENTRADA_BRITAGEM = 'ENTRADA_BRITAGEM',
+  ENTRADA_OBRA = 'ENTRADA_OBRA'
 }
 
 export interface AppUser {
@@ -42,6 +44,7 @@ export interface MovimentoTanque {
   tipo_movimento: TipoMovimento;
   litros: number;
   veiculo_id?: string; // Agora opcional para entradas no tanque principal
+  tanque_id?: 'britagem' | 'obra'; // Identificador do tanque
   usuario_id?: string; // Quem fez o lançamento
   motorista?: string;
   km_informado?: number;

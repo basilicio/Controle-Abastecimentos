@@ -15,7 +15,8 @@ import { analyzeFuelEfficiency } from './services/geminiService';
 import { db } from './db';
 import { cloudService } from './services/cloudService';
 
-const MAX_TANK_CAPACITY = 11000;
+const CAPACITY_BRITAGEM = 11000;
+const CAPACITY_OBRA = 3000;
 const CLOUD_KEY_STORAGE = 'fueltrack_cloud_master_key';
 const CLOUD_BIN_STORAGE = 'fueltrack_cloud_bin_id';
 
@@ -35,7 +36,10 @@ export default function App() {
   const [vehicles, setVehicles] = useState<VeiculoEquipamento[]>([]);
   const [movements, setMovements] = useState<MovimentoTanque[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [tank, setTank] = useState<Tanque>({ id: 'main', nome: 'Reservatório Central', capacidade_litros: MAX_TANK_CAPACITY, saldo_atual: 0 });
+  const [tanks, setTanks] = useState<Tanque[]>([
+    { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: 0 },
+    { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 }
+  ]);
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -80,15 +84,27 @@ export default function App() {
       };
     });
 
-    const calculatedBalance = m.reduce((acc, curr) => acc + curr.litros, 0);
+    const balanceBritagem = m.filter(mov => 
+      mov.tanque_id === 'britagem' || 
+      (!mov.tanque_id && mov.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM) ||
+      (!mov.tanque_id && mov.tipo_movimento === TipoMovimento.ABASTECIMENTO)
+    ).reduce((acc, curr) => acc + curr.litros, 0);
+
+    const balanceObra = m.filter(mov => 
+      mov.tanque_id === 'obra' || 
+      (!mov.tanque_id && mov.tipo_movimento === TipoMovimento.ENTRADA_OBRA)
+    ).reduce((acc, curr) => acc + curr.litros, 0);
     
     setVehicles(updatedVehicles);
     setUsers(u);
     setMovements(sortedMovements);
     
-    const updatedTank = { id: 'main', nome: 'Reservatório Central', capacidade_litros: MAX_TANK_CAPACITY, saldo_atual: calculatedBalance };
-    setTank(updatedTank);
-    await db.put('tanque', updatedTank);
+    const updatedTanks: Tanque[] = [
+      { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: balanceBritagem },
+      { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: balanceObra }
+    ];
+    setTanks(updatedTanks);
+    await db.put('tanque', updatedTanks);
   };
 
   const handleCloudSync = async (mode: 'upload' | 'download') => {
@@ -209,7 +225,7 @@ export default function App() {
       </nav>
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        {activeTab === 'dashboard' && <DashboardView tank={tank} movements={movements} vehicles={vehicles} />}
+        {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} />}
         {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} onAdd={async (v:any) => { await db.put('veiculos', {...v, id: v.id || Math.random().toString(36).substr(2,9), usuario_id: currentUser.id}); await refreshData(); }} onEdit={async (v:any) => { await db.put('veiculos', v); await refreshData(); }} onDelete={async (id:string, skipConfirm: boolean = false) => { if(skipConfirm || confirm('Deseja excluir este ativo permanentemente?')){ try { await db.delete('veiculos', id); await refreshData(); } catch(e) { alert("Erro ao excluir ativo."); } } }} />}
         {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} users={users} currentUser={currentUser} addMovement={async (m:any) => {
           const v = vehicles.find(vi => vi.id === m.veiculo_id);
@@ -234,7 +250,7 @@ export default function App() {
           }
         }} />}
         {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
-        {activeTab === 'tank' && <TankView tank={tank} movements={movements} onSync={refreshData} />}
+        {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} onSync={refreshData} />}
         {activeTab === 'ai' && currentUser.role === 'admin' && <AIInsightsView vehicles={vehicles} movements={movements} analysis={aiAnalysis} setAnalysis={setAiAnalysis} isAnalyzing={isAnalyzing} setIsAnalyzing={setIsAnalyzing} />}
         {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} onRefresh={refreshData} />}
       </main>
@@ -501,7 +517,7 @@ function FleetView({ vehicles, users, onAdd, onEdit, onDelete, currentUser }: an
 }
 
 function MovementsView({ movements, vehicles, users, addMovement, deleteMovement, editMovement, currentUser }: any) {
-  const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '' });
+  const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' as 'britagem' | 'obra' });
   const [editingMovement, setEditingMovement] = useState<any>(null);
   const isSaida = form.tipo === TipoMovimento.CONSUMO;
 
@@ -545,11 +561,52 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
       <div className="lg:col-span-4"><div className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm sticky top-8">
         <h3 className="text-xl font-black mb-6">Registrar Movimento</h3>
-        <form onSubmit={e => { e.preventDefault(); addMovement({ tipo_movimento: form.tipo, veiculo_id: isSaida ? form.veiculoId : undefined, motorista: isSaida ? form.motorista : undefined, litros: isSaida ? -parseFloat(form.litros) : parseFloat(form.litros), km_informado: isSaida ? parseFloat(form.leitura) : undefined, horimetro_informado: isSaida ? parseFloat(form.leitura) : undefined, data_hora: new Date().toISOString(), observacoes: '', usuario_id: currentUser.id }); setForm({ ...form, litros: '', leitura: '' }); }} className="space-y-4">
-          <div className="flex bg-slate-100 p-1 rounded-2xl border">
-            <button type="button" onClick={() => setForm({...form, tipo: TipoMovimento.CONSUMO})} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${form.tipo === TipoMovimento.CONSUMO ? 'bg-white text-red-500 shadow-sm' : 'text-slate-500'}`}>Saída</button>
-            <button type="button" onClick={() => setForm({...form, tipo: TipoMovimento.ABASTECIMENTO})} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${form.tipo === TipoMovimento.ABASTECIMENTO ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}>Entrada</button>
+        <form onSubmit={e => { 
+          e.preventDefault(); 
+          addMovement({ 
+            tipo_movimento: form.tipo, 
+            veiculo_id: isSaida ? form.veiculoId : undefined, 
+            tanque_id: form.tipo === TipoMovimento.ENTRADA_BRITAGEM ? 'britagem' : 
+                       form.tipo === TipoMovimento.ENTRADA_OBRA ? 'obra' : 
+                       form.tanqueId,
+            motorista: isSaida ? form.motorista : undefined, 
+            litros: isSaida ? -parseFloat(form.litros) : parseFloat(form.litros), 
+            km_informado: isSaida ? parseFloat(form.leitura) : undefined, 
+            horimetro_informado: isSaida ? parseFloat(form.leitura) : undefined, 
+            data_hora: new Date().toISOString(), 
+            observacoes: '', 
+            usuario_id: currentUser.id 
+          }); 
+          setForm({ ...form, litros: '', leitura: '' }); 
+        }} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase text-slate-400 block">Tipo de Movimento</label>
+            <select 
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold"
+              value={form.tipo}
+              onChange={e => setForm({...form, tipo: e.target.value as TipoMovimento})}
+            >
+              <option value={TipoMovimento.CONSUMO}>Saída (Consumo)</option>
+              <option value={TipoMovimento.ABASTECIMENTO}>Entrada (Tanque)</option>
+              <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Britagem</option>
+              <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Obra</option>
+            </select>
           </div>
+
+          {(form.tipo === TipoMovimento.CONSUMO || form.tipo === TipoMovimento.ABASTECIMENTO) && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-400 block">Tanque Origem/Destino</label>
+              <select 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold"
+                value={form.tanqueId}
+                onChange={e => setForm({...form, tanqueId: e.target.value as any})}
+              >
+                <option value="britagem">Tanque Britagem (11.000L)</option>
+                <option value="obra">Tanque Obra (3.000L)</option>
+              </select>
+            </div>
+          )}
+
           <input placeholder="Volume (Litros)" required type="number" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" value={form.litros} onChange={e => setForm({...form, litros: e.target.value})} />
           {isSaida && (
             <div className="space-y-4">
@@ -588,6 +645,11 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
                     <td className="px-6 py-4">
                       <div className="text-[11px] font-bold text-slate-500">{new Date(m.data_hora).toLocaleDateString()}</div>
                       <div className="text-[9px] font-black text-blue-500 uppercase">Por: {u?.name || 'Sistema'}</div>
+                      <div className={`text-[8px] font-black uppercase mt-1 ${m.tipo_movimento === TipoMovimento.CONSUMO ? 'text-red-400' : 'text-green-500'}`}>
+                        {m.tipo_movimento === TipoMovimento.ABASTECIMENTO ? 'Abastecimento' : 
+                         m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 
+                         m.tipo_movimento === TipoMovimento.ENTRADA_OBRA ? 'Entrada Obra' : 'Consumo'}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-[10px] font-black text-slate-700 uppercase">{m.motorista || '-'}</div>
@@ -636,6 +698,11 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
                   <div>
                     <div className="text-[10px] font-black text-slate-400 uppercase">{new Date(m.data_hora).toLocaleDateString()}</div>
                     <div className="text-xs font-black text-blue-500 uppercase">Por: {u?.name || 'Sistema'}</div>
+                    <div className={`text-[9px] font-black uppercase mt-1 ${m.tipo_movimento === TipoMovimento.CONSUMO ? 'text-red-400' : 'text-green-500'}`}>
+                      {m.tipo_movimento === TipoMovimento.ABASTECIMENTO ? 'Abastecimento' : 
+                       m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 
+                       m.tipo_movimento === TipoMovimento.ENTRADA_OBRA ? 'Entrada Obra' : 'Consumo'}
+                    </div>
                   </div>
                   <div className={`text-xl font-black ${m.litros > 0 ? 'text-green-600' : 'text-red-500'}`}>
                     {m.litros > 0 ? '+' : ''}{m.litros.toLocaleString()} L
@@ -689,6 +756,44 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
               editMovement(editingMovement); 
               setEditingMovement(null); 
             }} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Tipo de Movimento</label>
+                <select 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold"
+                  value={editingMovement.tipo_movimento}
+                  onChange={e => {
+                    const newTipo = e.target.value as TipoMovimento;
+                    const wasSaida = editingMovement.tipo_movimento === TipoMovimento.CONSUMO;
+                    const isNowSaida = newTipo === TipoMovimento.CONSUMO;
+                    let newLitros = editingMovement.litros;
+                    
+                    if (wasSaida && !isNowSaida) newLitros = Math.abs(newLitros);
+                    if (!wasSaida && isNowSaida) newLitros = -Math.abs(newLitros);
+                    
+                    setEditingMovement({...editingMovement, tipo_movimento: newTipo, litros: newLitros});
+                  }}
+                >
+                  <option value={TipoMovimento.CONSUMO}>Saída (Consumo)</option>
+                  <option value={TipoMovimento.ABASTECIMENTO}>Entrada (Tanque)</option>
+                  <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Britagem</option>
+                  <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Obra</option>
+                </select>
+              </div>
+
+              {(editingMovement.tipo_movimento === TipoMovimento.CONSUMO || editingMovement.tipo_movimento === TipoMovimento.ABASTECIMENTO) && (
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Tanque Origem/Destino</label>
+                  <select 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold"
+                    value={editingMovement.tanque_id || 'britagem'}
+                    onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value as any})}
+                  >
+                    <option value="britagem">Tanque Britagem (11.000L)</option>
+                    <option value="obra">Tanque Obra (3.000L)</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Volume (Litros)</label>
                 <input 
@@ -749,22 +854,31 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
   );
 }
 
-function DashboardView({ tank, movements, vehicles }: any) {
-  const percent = Math.min(100, Math.max(0, (tank.saldo_atual / MAX_TANK_CAPACITY) * 100));
+function DashboardView({ tanks, movements, vehicles }: any) {
   const totalLitersConsumidos = Math.abs(movements.filter((m: any) => m.litros < 0).reduce((acc: number, curr: any) => acc + curr.litros, 0));
   
   return (
     <div className="space-y-6">
       <header><h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Status da Frota</h2></header>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 md:p-8 flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <h3 className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">Diesel em Estoque</h3>
-            <div className="text-4xl md:text-6xl font-black text-slate-900 mb-2">{tank.saldo_atual.toLocaleString()} <span className="text-xl md:text-2xl text-slate-300">L</span></div>
-            <div className="text-[10px] font-black text-blue-600 uppercase">Capacidade Total: {MAX_TANK_CAPACITY.toLocaleString()} L</div>
-          </div>
-          <div className="w-16 h-16 md:w-24 md:h-24 relative"><svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90"><circle cx="18" cy="18" r="16" fill="none" className="text-slate-100" strokeWidth="4" stroke="currentColor" /><circle cx="18" cy="18" r="16" fill="none" className={percent < 15 ? 'text-red-500' : 'text-blue-600'} strokeWidth="4" strokeDasharray={`${percent}, 100`} strokeLinecap="round" stroke="currentColor" /></svg></div>
-        </div>
+        {tanks.map((t: any) => {
+          const percent = Math.min(100, Math.max(0, (t.saldo_atual / t.capacidade_litros) * 100));
+          return (
+            <div key={t.id} className="md:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 md:p-8 flex items-center justify-between shadow-sm">
+              <div className="space-y-1">
+                <h3 className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">{t.nome}</h3>
+                <div className="text-3xl md:text-5xl font-black text-slate-900 mb-2">{t.saldo_atual.toLocaleString()} <span className="text-lg md:text-xl text-slate-300">L</span></div>
+                <div className="text-[10px] font-black text-blue-600 uppercase">Capacidade: {t.capacidade_litros.toLocaleString()} L</div>
+              </div>
+              <div className="w-16 h-16 md:w-20 md:h-20 relative">
+                <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+                  <circle cx="18" cy="18" r="16" fill="none" className="text-slate-100" strokeWidth="4" stroke="currentColor" />
+                  <circle cx="18" cy="18" r="16" fill="none" className={percent < 15 ? 'text-red-500' : 'text-blue-600'} strokeWidth="4" strokeDasharray={`${percent}, 100`} strokeLinecap="round" stroke="currentColor" />
+                </svg>
+              </div>
+            </div>
+          );
+        })}
         <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-sm flex flex-row md:flex-col items-center md:items-start justify-between">
           <Truck className="text-blue-600" size={32} />
           <div className="text-right md:text-left">
@@ -920,34 +1034,49 @@ function ReportsView({ movements, vehicles, users }: any) {
   );
 }
 
-function TankView({ tank, movements }: any) {
-  const percent = Math.min(100, Math.max(0, (tank.saldo_atual / MAX_TANK_CAPACITY) * 100));
-  const entradas = movements.filter((m: any) => m.tipo_movimento === TipoMovimento.ABASTECIMENTO).slice(0, 5);
+function TankView({ tanks, movements }: any) {
+  const entradas = movements.filter((m: any) => m.tipo_movimento !== TipoMovimento.CONSUMO).slice(0, 5);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-      <div className="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[44px] border border-slate-200 shadow-sm flex flex-col items-center">
-        <Box size={48} className="text-blue-600 mb-6" />
-        <h3 className="text-xl md:text-3xl font-black text-slate-900 uppercase tracking-tighter mb-8 text-center">Reservatório Central</h3>
-        <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 mb-4">
-          <div className={`h-full transition-all duration-1000 ${percent < 15 ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${percent}%` }} />
-        </div>
-        <div className="flex justify-between w-full text-[9px] md:text-[10px] font-black text-slate-400 uppercase px-1">
-          <span>0 L</span>
-          <span>{tank.saldo_atual.toLocaleString()} L Disponível</span>
-          <span>{MAX_TANK_CAPACITY.toLocaleString()} L</span>
-        </div>
-        <div className="mt-8 p-6 bg-slate-50 rounded-3xl w-full text-center">
-          <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Espaço Livre</div>
-          <div className="text-2xl md:text-3xl font-black text-slate-700">{(MAX_TANK_CAPACITY - tank.saldo_atual).toLocaleString()} L</div>
-        </div>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        {tanks.map((t: any) => {
+          const percent = Math.min(100, Math.max(0, (t.saldo_atual / t.capacidade_litros) * 100));
+          return (
+            <div key={t.id} className="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[44px] border border-slate-200 shadow-sm flex flex-col items-center">
+              <Box size={48} className="text-blue-600 mb-6" />
+              <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tighter mb-8 text-center">{t.nome}</h3>
+              <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 mb-4">
+                <div className={`h-full transition-all duration-1000 ${percent < 15 ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${percent}%` }} />
+              </div>
+              <div className="flex justify-between w-full text-[9px] md:text-[10px] font-black text-slate-400 uppercase px-1">
+                <span>0 L</span>
+                <span>{t.saldo_atual.toLocaleString()} L Disponível</span>
+                <span>{t.capacidade_litros.toLocaleString()} L</span>
+              </div>
+              <div className="mt-8 p-6 bg-slate-50 rounded-3xl w-full text-center">
+                <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Espaço Livre</div>
+                <div className="text-2xl md:text-3xl font-black text-slate-700">{(t.capacidade_litros - t.saldo_atual).toLocaleString()} L</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       <div className="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[44px] border border-slate-200 shadow-sm">
         <h3 className="text-lg md:text-xl font-black mb-6 flex items-center gap-2"><ArrowDownCircle className="text-green-600" /> Entradas Recentes</h3>
         <div className="space-y-4">
           {entradas.length > 0 ? entradas.map((e: any) => (
             <div key={e.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-              <div><div className="text-[10px] font-bold text-slate-500">{new Date(e.data_hora).toLocaleDateString()}</div><div className="text-xs font-black text-slate-900 uppercase">Abastecimento</div></div>
+              <div>
+                <div className="text-[10px] font-bold text-slate-500">{new Date(e.data_hora).toLocaleDateString()}</div>
+                <div className="text-xs font-black text-slate-900 uppercase">
+                  {e.tipo_movimento === TipoMovimento.ABASTECIMENTO ? 'Abastecimento' : 
+                   e.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 'Entrada Obra'}
+                </div>
+                <div className="text-[8px] font-black text-blue-500 uppercase mt-0.5">
+                  Tanque: {e.tanque_id || (e.tipo_movimento === TipoMovimento.ENTRADA_OBRA ? 'obra' : 'britagem')}
+                </div>
+              </div>
               <div className="text-base md:text-lg font-black text-green-600">+{e.litros.toLocaleString()} L</div>
             </div>
           )) : <div className="text-center py-10 text-slate-400 font-bold uppercase text-[10px]">Nenhuma entrada registrada.</div>}
