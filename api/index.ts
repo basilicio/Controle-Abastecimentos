@@ -1,8 +1,7 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import cors from 'cors';
 import { JSONFilePreset } from 'lowdb/node';
-import { VeiculoEquipamento, MovimentoTanque, Tanque, AppUser } from './types.ts';
+import { VeiculoEquipamento, MovimentoTanque, Tanque, AppUser } from '../types';
 
 interface Data {
   veiculos: VeiculoEquipamento[];
