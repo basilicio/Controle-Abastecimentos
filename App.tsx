@@ -11,7 +11,6 @@ import {
   TipoVeiculo, MedidaUso, TipoMovimento, VeiculoEquipamento, 
   MovimentoTanque, Tanque, AppUser 
 } from './types';
-import { analyzeFuelEfficiency } from './services/geminiService';
 import { db } from './db';
 import { cloudService } from './services/cloudService';
 
@@ -21,7 +20,7 @@ const CLOUD_KEY_STORAGE = 'fueltrack_cloud_master_key';
 const CLOUD_BIN_STORAGE = 'fueltrack_cloud_bin_id';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fleet' | 'movements' | 'tank' | 'reports' | 'ai' | 'users'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fleet' | 'movements' | 'tank' | 'reports' | 'users'>('dashboard');
   const [isDbReady, setIsDbReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   
@@ -41,8 +40,6 @@ export default function App() {
     { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: 0 },
     { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 }
   ]);
-  const [aiAnalysis, setAiAnalysis] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -222,7 +219,6 @@ export default function App() {
           <SidebarItem icon={<History size={18} />} label="Movimentação" active={activeTab === 'movements'} onClick={() => { setActiveTab('movements'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<BarChart3 size={18} />} label="Relatórios" active={activeTab === 'reports'} onClick={() => { setActiveTab('reports'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<Box size={18} />} label="Estoque Tanque" active={activeTab === 'tank'} onClick={() => { setActiveTab('tank'); setIsSidebarOpen(false); }} />
-          {currentUser.role === 'admin' && <SidebarItem icon={<Zap size={18} />} label="Insights IA" active={activeTab === 'ai'} onClick={() => { setActiveTab('ai'); setIsSidebarOpen(false); }} />}
           {currentUser.role === 'admin' && <SidebarItem icon={<ShieldAlert size={18} />} label="Usuários" active={activeTab === 'users'} onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} />}
         </ul>
         
@@ -268,7 +264,6 @@ export default function App() {
         }} />}
         {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
         {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} onSync={refreshData} />}
-        {activeTab === 'ai' && currentUser.role === 'admin' && <AIInsightsView vehicles={vehicles} movements={movements} analysis={aiAnalysis} setAnalysis={setAiAnalysis} isAnalyzing={isAnalyzing} setIsAnalyzing={setIsAnalyzing} />}
         {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} onRefresh={async () => { await refreshData(); triggerAutoSync(); }} />}
       </main>
 
@@ -1119,21 +1114,6 @@ function TankView({ tanks, movements }: any) {
             </div>
           )) : <div className="text-center py-10 text-slate-400 font-bold uppercase text-[10px]">Nenhuma entrada registrada.</div>}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function AIInsightsView({ vehicles, movements, analysis, setAnalysis, isAnalyzing, setIsAnalyzing }: any) {
-  const run = async () => { if (movements.length < 2) return alert("Poucos dados."); setIsAnalyzing(true); setAnalysis(await analyzeFuelEfficiency(vehicles, movements)); setIsAnalyzing(false); };
-  return (
-    <div className="max-w-4xl mx-auto space-y-6 md:space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div><h2 className="text-2xl md:text-3xl font-black tracking-tight">Insights IA</h2></div>
-        <button onClick={run} disabled={isAnalyzing} className="w-full sm:w-auto bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">{isAnalyzing ? "Analisando..." : "Analisar Agora"}</button>
-      </div>
-      <div className="bg-white rounded-[32px] md:rounded-[44px] border border-slate-200 p-6 md:p-10 shadow-sm min-h-[400px]">
-        {analysis ? <div className="prose prose-slate max-w-none prose-headings:font-black text-sm md:text-base" dangerouslySetInnerHTML={{ __html: analysis.replace(/\n/g, '<br/>') }} /> : <div className="flex flex-col items-center justify-center py-20 text-slate-400"><Zap size={56} className="text-slate-100 mb-5" /><h3 className="text-lg md:text-xl font-black text-slate-900">IA Pronta</h3><p className="text-xs font-bold uppercase mt-2">Clique para analisar a eficiência da frota</p></div>}
       </div>
     </div>
   );

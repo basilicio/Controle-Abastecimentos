@@ -4,14 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx api/index.ts",
+    "dev": "tsx server.ts",
     "build": "vite build",
-    "start": "tsx api/index.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.41.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "lowdb": "^7.0.1",
