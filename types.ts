@@ -10,7 +10,6 @@ export enum MedidaUso {
 }
 
 export enum TipoMovimento {
-  ABASTECIMENTO = 'ABASTECIMENTO',
   CONSUMO = 'CONSUMO',
   ENTRADA_BRITAGEM = 'ENTRADA_BRITAGEM',
   ENTRADA_OBRA = 'ENTRADA_OBRA'

@@ -30,6 +30,7 @@ export default function App() {
   const [masterKey, setMasterKey] = useState(localStorage.getItem(CLOUD_KEY_STORAGE) || import.meta.env.VITE_JSONBIN_MASTER_KEY || '');
   const [binId, setBinId] = useState(localStorage.getItem(CLOUD_BIN_STORAGE) || import.meta.env.VITE_JSONBIN_BIN_ID || '');
   const [lastSync, setLastSync] = useState<string | null>(localStorage.getItem('fueltrack_last_sync_ts'));
+  const [isAutoSync, setIsAutoSync] = useState(localStorage.getItem('fueltrack_auto_sync') !== 'false');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -105,6 +106,19 @@ export default function App() {
     ];
     setTanks(updatedTanks);
     await db.put('tanque', updatedTanks);
+  };
+
+  const triggerAutoSync = async () => {
+    if (!isAutoSync || !masterKey.trim() || !binId.trim()) return;
+    try {
+      const data = await db.exportAllData();
+      await cloudService.sync(data, masterKey.trim(), binId.trim());
+      const now = new Date().toLocaleString();
+      setLastSync(now);
+      localStorage.setItem('fueltrack_last_sync_ts', now);
+    } catch (e) {
+      console.warn("Auto-sync background failed:", e);
+    }
   };
 
   const handleCloudSync = async (mode: 'upload' | 'download') => {
@@ -226,17 +240,19 @@ export default function App() {
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} />}
-        {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} onAdd={async (v:any) => { await db.put('veiculos', {...v, id: v.id || Math.random().toString(36).substr(2,9), usuario_id: currentUser.id}); await refreshData(); }} onEdit={async (v:any) => { await db.put('veiculos', v); await refreshData(); }} onDelete={async (id:string, skipConfirm: boolean = false) => { if(skipConfirm || confirm('Deseja excluir este ativo permanentemente?')){ try { await db.delete('veiculos', id); await refreshData(); } catch(e) { alert("Erro ao excluir ativo."); } } }} />}
+        {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} onAdd={async (v:any) => { await db.put('veiculos', {...v, id: v.id || Math.random().toString(36).substr(2,9), usuario_id: currentUser.id}); await refreshData(); triggerAutoSync(); }} onEdit={async (v:any) => { await db.put('veiculos', v); await refreshData(); triggerAutoSync(); }} onDelete={async (id:string, skipConfirm: boolean = false) => { if(skipConfirm || confirm('Deseja excluir este ativo permanentemente?')){ try { await db.delete('veiculos', id); await refreshData(); triggerAutoSync(); } catch(e) { alert("Erro ao excluir ativo."); } } }} />}
         {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} users={users} currentUser={currentUser} addMovement={async (m:any) => {
           const v = vehicles.find(vi => vi.id === m.veiculo_id);
           await db.put('movements', {...m, id: m.id || Math.random().toString(36).substr(2,9), usuario_id: currentUser.id});
           if(v && m.tipo_movimento === TipoMovimento.CONSUMO) await db.put('veiculos', {...v, odometro_atual: m.km_informado ?? v.odometro_atual, horimetro_atual: m.horimetro_informado ?? v.horimetro_atual});
           await refreshData();
+          triggerAutoSync();
         }} deleteMovement={async (id: string, skipConfirm: boolean = false) => { 
           if(skipConfirm || confirm('Deseja excluir este lançamento permanentemente?')){ 
             try {
               await db.delete('movements', id); 
               await refreshData(); 
+              triggerAutoSync();
             } catch (e) {
               alert("Erro ao excluir registro.");
             }
@@ -245,6 +261,7 @@ export default function App() {
           try {
             await db.put('movements', m); 
             await refreshData(); 
+            triggerAutoSync();
           } catch (e) {
             alert("Erro ao salvar alterações.");
           }
@@ -252,7 +269,7 @@ export default function App() {
         {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
         {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} onSync={refreshData} />}
         {activeTab === 'ai' && currentUser.role === 'admin' && <AIInsightsView vehicles={vehicles} movements={movements} analysis={aiAnalysis} setAnalysis={setAiAnalysis} isAnalyzing={isAnalyzing} setIsAnalyzing={setIsAnalyzing} />}
-        {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} onRefresh={refreshData} />}
+        {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} onRefresh={async () => { await refreshData(); triggerAutoSync(); }} />}
       </main>
 
       {/* Cloud Settings Modal */}
@@ -269,7 +286,30 @@ export default function App() {
               </p>
               <input type="password" placeholder="JSONBin Master Key" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={masterKey} onChange={e => setMasterKey(e.target.value)} />
               <input placeholder="Bin ID" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={binId} onChange={e => setBinId(e.target.value)} />
-              <button onClick={() => { localStorage.setItem(CLOUD_KEY_STORAGE, masterKey); localStorage.setItem(CLOUD_BIN_STORAGE, binId); setShowCloudSettings(false); alert('Salvo!'); }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Salvar</button>
+              
+              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <div className="flex items-center gap-3">
+                  <RefreshCcw size={20} className={`text-blue-600 ${isAutoSync ? 'animate-spin-slow' : ''}`} />
+                  <div>
+                    <p className="text-xs font-black uppercase text-blue-900">Sincronização Automática</p>
+                    <p className="text-[9px] font-bold text-blue-600 uppercase">Salvar na nuvem após cada alteração</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsAutoSync(!isAutoSync)}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${isAutoSync ? 'bg-blue-600' : 'bg-slate-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isAutoSync ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
+              <button onClick={() => { 
+                localStorage.setItem(CLOUD_KEY_STORAGE, masterKey); 
+                localStorage.setItem(CLOUD_BIN_STORAGE, binId); 
+                localStorage.setItem('fueltrack_auto_sync', String(isAutoSync));
+                setShowCloudSettings(false); 
+                alert('Configurações salvas!'); 
+              }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Salvar</button>
             </div>
           </div>
         </div>
@@ -587,7 +627,6 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
               onChange={e => setForm({...form, tipo: e.target.value as TipoMovimento})}
             >
               <option value={TipoMovimento.CONSUMO}>Saída (Consumo)</option>
-              <option value={TipoMovimento.ABASTECIMENTO}>Entrada (Tanque)</option>
               <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Britagem</option>
               <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Obra</option>
             </select>
@@ -774,7 +813,6 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
                   }}
                 >
                   <option value={TipoMovimento.CONSUMO}>Saída (Consumo)</option>
-                  <option value={TipoMovimento.ABASTECIMENTO}>Entrada (Tanque)</option>
                   <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Britagem</option>
                   <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Obra</option>
                 </select>
@@ -1101,7 +1139,7 @@ function AIInsightsView({ vehicles, movements, analysis, setAnalysis, isAnalyzin
   );
 }
 
-function UserManagementView({ users, onRefresh }: { users: AppUser[], onRefresh: () => void }) {
+function UserManagementView({ users, onRefresh }: { users: AppUser[], onRefresh: () => Promise<void> | void }) {
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
