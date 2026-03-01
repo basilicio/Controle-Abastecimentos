@@ -84,8 +84,7 @@ export default function App() {
 
     const balanceBritagem = m.filter(mov => 
       mov.tanque_id === 'britagem' || 
-      (!mov.tanque_id && mov.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM) ||
-      (!mov.tanque_id && mov.tipo_movimento === TipoMovimento.ABASTECIMENTO)
+      (!mov.tanque_id && mov.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM)
     ).reduce((acc, curr) => acc + curr.litros, 0);
 
     const balanceObra = m.filter(mov => 
@@ -627,7 +626,7 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
             </select>
           </div>
 
-          {(form.tipo === TipoMovimento.CONSUMO || form.tipo === TipoMovimento.ABASTECIMENTO) && (
+          {form.tipo === TipoMovimento.CONSUMO && (
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 block">Tanque Origem/Destino</label>
               <select 
@@ -680,8 +679,7 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
                       <div className="text-[11px] font-bold text-slate-500">{new Date(m.data_hora).toLocaleDateString()}</div>
                       <div className="text-[9px] font-black text-blue-500 uppercase">Por: {u?.name || 'Sistema'}</div>
                       <div className={`text-[8px] font-black uppercase mt-1 ${m.tipo_movimento === TipoMovimento.CONSUMO ? 'text-red-400' : 'text-green-500'}`}>
-                        {m.tipo_movimento === TipoMovimento.ABASTECIMENTO ? 'Abastecimento' : 
-                         m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 
+                        {m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 
                          m.tipo_movimento === TipoMovimento.ENTRADA_OBRA ? 'Entrada Obra' : 'Consumo'}
                       </div>
                     </td>
@@ -733,8 +731,7 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
                     <div className="text-[10px] font-black text-slate-400 uppercase">{new Date(m.data_hora).toLocaleDateString()}</div>
                     <div className="text-xs font-black text-blue-500 uppercase">Por: {u?.name || 'Sistema'}</div>
                     <div className={`text-[9px] font-black uppercase mt-1 ${m.tipo_movimento === TipoMovimento.CONSUMO ? 'text-red-400' : 'text-green-500'}`}>
-                      {m.tipo_movimento === TipoMovimento.ABASTECIMENTO ? 'Abastecimento' : 
-                       m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 
+                      {m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 
                        m.tipo_movimento === TipoMovimento.ENTRADA_OBRA ? 'Entrada Obra' : 'Consumo'}
                     </div>
                   </div>
@@ -813,7 +810,7 @@ function MovementsView({ movements, vehicles, users, addMovement, deleteMovement
                 </select>
               </div>
 
-              {(editingMovement.tipo_movimento === TipoMovimento.CONSUMO || editingMovement.tipo_movimento === TipoMovimento.ABASTECIMENTO) && (
+              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Tanque Origem/Destino</label>
                   <select 
@@ -1103,8 +1100,7 @@ function TankView({ tanks, movements }: any) {
               <div>
                 <div className="text-[10px] font-bold text-slate-500">{new Date(e.data_hora).toLocaleDateString()}</div>
                 <div className="text-xs font-black text-slate-900 uppercase">
-                  {e.tipo_movimento === TipoMovimento.ABASTECIMENTO ? 'Abastecimento' : 
-                   e.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 'Entrada Obra'}
+                  {e.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM ? 'Entrada Britagem' : 'Entrada Obra'}
                 </div>
                 <div className="text-[8px] font-black text-blue-500 uppercase mt-0.5">
                   Tanque: {e.tanque_id || (e.tipo_movimento === TipoMovimento.ENTRADA_OBRA ? 'obra' : 'britagem')}
