@@ -297,6 +297,25 @@ export default function App() {
                 </button>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  disabled={isCloudSyncing}
+                  onClick={() => handleCloudSync('upload')}
+                  className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
+                >
+                  <CloudUpload size={16} />
+                  Enviar Agora
+                </button>
+                <button 
+                  disabled={isCloudSyncing}
+                  onClick={() => handleCloudSync('download')}
+                  className="flex items-center justify-center gap-2 bg-amber-500 text-white py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
+                >
+                  <CloudDownload size={16} />
+                  Baixar Agora
+                </button>
+              </div>
+
               <button onClick={() => { 
                 localStorage.setItem(CLOUD_KEY_STORAGE, masterKey); 
                 localStorage.setItem(CLOUD_BIN_STORAGE, binId); 
@@ -338,15 +357,43 @@ function LoadingScreen() {
 function LoginView({ onLogin, users }: any) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    // Hardcoded ADM/ADM check
+    if (login.toUpperCase() === 'ADM' && password === 'ADM') {
+      onLogin({ id: 'admin-id', login: 'ADM', password: 'ADM', role: 'admin', name: 'Administrador' });
+      return;
+    }
+
+    const user = users.find((u:any) => u.login.toUpperCase() === login.toUpperCase() && u.password === password);
+    if (user) {
+      onLogin(user);
+    } else {
+      setError('Usuário e/ou senha não localizado.');
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
       <div className="w-full max-w-sm bg-white rounded-[40px] p-10 shadow-2xl text-center">
         <div className="bg-blue-600 w-16 h-16 rounded-[22px] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-200"><Droplets className="text-white" size={32} /></div>
         <h2 className="text-3xl font-black mb-10">FuelTrack Pro</h2>
-        <form onSubmit={e => { e.preventDefault(); const user = users.find((u:any) => u.login.toUpperCase() === login.toUpperCase() && u.password === password); user ? onLogin(user) : alert('Erro'); }} className="space-y-4 text-left">
-          <input required placeholder="Login" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none" value={login} onChange={e => setLogin(e.target.value)} />
-          <input required type="password" placeholder="Senha" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none" value={password} onChange={e => setPassword(e.target.value)} />
-          <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Entrar</button>
+        
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in fade-in slide-in-from-top-2">
+            <AlertCircle size={18} />
+            <p className="text-xs font-black uppercase tracking-tight">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-left">
+          <input required placeholder="Login" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" value={login} onChange={e => setLogin(e.target.value)} />
+          <input required type="password" placeholder="Senha" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" value={password} onChange={e => setPassword(e.target.value)} />
+          <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-blue-700 transition-colors">Entrar</button>
         </form>
       </div>
     </div>

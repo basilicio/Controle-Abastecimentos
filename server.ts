@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Database setup
   // @ts-ignore
@@ -32,14 +32,19 @@ async function startServer() {
     // @ts-ignore
     if (!db.data[storeName]) db.data[storeName] = [];
     
-    // @ts-ignore
-    const index = db.data[storeName].findIndex((i: any) => i.id === item.id);
-    if (index > -1) {
+    if (Array.isArray(item)) {
       // @ts-ignore
-      db.data[storeName][index] = item;
+      db.data[storeName] = item;
     } else {
       // @ts-ignore
-      db.data[storeName].push(item);
+      const index = db.data[storeName].findIndex((i: any) => i.id === item.id);
+      if (index > -1) {
+        // @ts-ignore
+        db.data[storeName][index] = item;
+      } else {
+        // @ts-ignore
+        db.data[storeName].push(item);
+      }
     }
     
     await db.write();

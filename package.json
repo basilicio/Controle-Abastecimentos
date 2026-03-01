@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
+    "start": "NODE_ENV=production tsx server.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
@@ -20,6 +21,8 @@
     "tsx": "^4.21.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
