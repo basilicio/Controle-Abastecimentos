@@ -523,6 +523,8 @@ function ReportsView({ movements, vehicles }: any) {
 
 function UserManagementView({ users }: any) {
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newUser, setNewUser] = useState<Partial<AppUser>>({ name: '', login: '', password: '', role: 'operador', approved: true });
   
   const toggleApproval = async (user: AppUser) => {
     try {
@@ -546,8 +548,21 @@ function UserManagementView({ users }: any) {
     }
   };
 
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const id = Math.random().toString(36).substr(2, 9);
+      const userToSave = { ...newUser, id } as AppUser;
+      await setDoc(doc(db, 'users', id), userToSave);
+      setShowAddForm(false);
+      setNewUser({ name: '', login: '', password: '', role: 'operador', approved: true });
+    } catch (e) {
+      alert("Erro ao criar usuário.");
+    }
+  };
+
   const deleteUser = async (id: string) => {
-    if (id === auth.currentUser?.uid) return alert("Você não pode excluir a si mesmo.");
+    if (id === 'admin_master_bypass') return alert("O administrador mestre não pode ser removido.");
     if (confirm("Excluir este usuário?")) {
       try {
         await deleteDoc(doc(db, 'users', id));
@@ -560,17 +575,23 @@ function UserManagementView({ users }: any) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black tracking-tight">Gestão de Equipe</h2>
-        <p className="text-[10px] font-black uppercase text-slate-400">Controle de acesso ao FuelTrack</p>
+        <div>
+          <h2 className="text-3xl font-black tracking-tight">Gestão de Equipe</h2>
+          <p className="text-[10px] font-black uppercase text-slate-400">Controle de acesso interno</p>
+        </div>
+        <button onClick={() => setShowAddForm(true)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all">
+          <UserPlus size={18} /> Novo Usuário
+        </button>
       </div>
+
       <div className="bg-white rounded-[44px] border border-slate-200 overflow-hidden shadow-sm">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b">
             <tr>
               <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Status</th>
               <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Nome</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Perfil</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">E-mail</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Usuário / ID</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Senha</th>
               <th className="px-8 py-5"></th>
             </tr>
           </thead>
@@ -581,16 +602,19 @@ function UserManagementView({ users }: any) {
                   {u.approved ? (
                     <span className="flex items-center gap-1.5 text-green-600 text-[10px] font-black uppercase"><ShieldCheck size={14} /> Ativo</span>
                   ) : (
-                    <span className="flex items-center gap-1.5 text-amber-500 text-[10px] font-black uppercase"><AlertCircle size={14} /> Pendente</span>
+                    <span className="flex items-center gap-1.5 text-amber-500 text-[10px] font-black uppercase"><AlertCircle size={14} /> Bloqueado</span>
                   )}
                 </td>
                 <td className="px-8 py-6 font-black uppercase text-slate-700">{u.name}</td>
                 <td className="px-8 py-6">
-                  <span className={`text-[9px] font-black px-2 py-1 rounded border uppercase ${u.role === 'admin' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                  <div className="text-xs font-bold text-slate-600">{u.login}</div>
+                  <div className={`text-[8px] font-black px-1.5 py-0.5 rounded border inline-block mt-1 uppercase ${u.role === 'admin' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                     {u.role}
-                  </span>
+                  </div>
                 </td>
-                <td className="px-8 py-6 text-slate-400 text-xs font-bold leading-none">{u.login}@corp.com</td>
+                <td className="px-8 py-6 text-slate-300 font-mono text-xs select-all hover:text-slate-600 transition-colors">
+                  {u.password || '******'}
+                </td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex items-center justify-end gap-3">
                     <button 
@@ -602,9 +626,7 @@ function UserManagementView({ users }: any) {
                       {u.approved ? 'Bloquear' : 'Aprovar'}
                     </button>
                     <button onClick={() => setEditingUser(u)} className="p-2 text-slate-300 hover:text-blue-600 transition-colors"><Pencil size={18} /></button>
-                    {u.id !== auth.currentUser?.uid && (
-                      <button onClick={() => deleteUser(u.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
-                    )}
+                    <button onClick={() => deleteUser(u.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
                   </div>
                 </td>
               </tr>
@@ -613,17 +635,37 @@ function UserManagementView({ users }: any) {
         </table>
       </div>
 
+      {showAddForm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl">
+            <h3 className="text-xl font-black mb-6">Cadastrar Usuário</h3>
+            <form onSubmit={handleAddUser} className="space-y-4">
+              <input required placeholder="Nome Completo" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+              <input required placeholder="Login (ex: pedro)" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={newUser.login} onChange={e => setNewUser({...newUser, login: e.target.value})} />
+              <input required placeholder="Senha de Acesso" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+              <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})}>
+                <option value="operador">Operador (Apenas lançar)</option>
+                <option value="admin">Administrador (Acesso Total)</option>
+              </select>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Criar Usuário</button>
+              <button type="button" onClick={() => setShowAddForm(false)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {editingUser && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl">
-            <h3 className="text-xl font-black mb-6">Editar Colaborador</h3>
+            <h3 className="text-xl font-black mb-6">Editar Usuário</h3>
             <form onSubmit={saveUser} className="space-y-4">
               <input required placeholder="Nome" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} />
+              <input required placeholder="Senha" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} />
               <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value as any})}>
                 <option value="operador">Operador</option>
                 <option value="admin">Administrador</option>
               </select>
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase">Salvar</button>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase shadow-lg">Salvar Alterações</button>
               <button type="button" onClick={() => setEditingUser(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
             </form>
           </div>
@@ -634,87 +676,61 @@ function UserManagementView({ users }: any) {
 }
 
 function LoginView({ setCurrentUser }: { setCurrentUser: (user: AppUser | null) => void }) {
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      
-      // Check if user profile exists in Firestore
-      const userRef = doc(db, 'users', result.user.uid);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        const isAdmin = result.user.email === 'admin@fueltrack.com' || result.user.email === 'basilicio@gmail.com';
-        await setDoc(userRef, {
-          id: result.user.uid,
-          name: result.user.displayName || result.user.email?.split('@')[0] || 'Usuário',
-          login: result.user.email?.split('@')[0] || 'user',
-          role: isAdmin ? 'admin' : 'operador',
-          approved: isAdmin
-        });
-      }
-    } catch (e: any) {
-      setError('Falha ao entrar com Google. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    
     try {
-      // Direct Admin Bypass for Google Org restrictions
-      if (email === 'admin@fueltrack.com' && password === 'admin123') {
+      // 1. Master Admin Bypass
+      if (login === 'admin' && password === 'admin') {
         const adminUser: AppUser = {
           id: 'admin_master_bypass',
           name: 'Administrador Mestre',
           login: 'admin',
           role: 'admin',
           approved: true,
-          password: ''
+          password: 'admin'
         };
-        // Persist to firestore even if auth fails
         await setDoc(doc(db, 'users', adminUser.id), adminUser);
         setCurrentUser(adminUser);
         setLoading(false);
         return;
       }
 
-      if (isRegistering) {
-        const credential = await createUserWithEmailAndPassword(auth, email, password);
-        const isAdmin = email === 'admin@fueltrack.com' || email === 'basilicio@gmail.com';
-        await setDoc(doc(db, 'users', credential.user.uid), {
-          id: credential.user.uid,
-          name: name || email.split('@')[0],
-          login: email.split('@')[0],
-          role: isAdmin ? 'admin' : 'operador',
-          approved: isAdmin // Admin is auto-approved
+      // 2. Database Lookup for other users
+      const usersRef = collection(db, 'users');
+      const uQuery = query(usersRef);
+      
+      const unsubscribe = onSnapshot(uQuery, (snap) => {
+        const found = snap.docs.find(d => {
+          const u = d.data();
+          return u.login === login && u.password === password;
         });
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+
+        if (found) {
+          const userData = found.data() as AppUser;
+          if (!userData.approved) {
+            setError('Sua conta ainda não foi aprovada pelo administrador.');
+            setLoading(false);
+          } else {
+            setCurrentUser(userData);
+            setLoading(false);
+          }
+        } else {
+          setError('Usuário ou senha incorretos.');
+          setLoading(false);
+        }
+        unsubscribe(); 
+      });
+
     } catch (e: any) {
-      if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-        setError('E-mail ou senha incorretos.');
-      } else if (e.code === 'auth/email-already-in-use') {
-        setError('Este e-mail já está cadastrado.');
-      } else if (e.code === 'auth/operation-not-allowed') {
-        setError('Acesso por e-mail/senha desativado. Use "Entrar com Google".');
-      } else {
-        setError('Erro na autenticação. Verifique os dados.');
-      }
-    } finally {
+      setError('Erro ao validar acesso. Tente novamente.');
       setLoading(false);
     }
   };
@@ -724,7 +740,7 @@ function LoginView({ setCurrentUser }: { setCurrentUser: (user: AppUser | null) 
       <div className="w-full max-w-sm bg-white rounded-[40px] p-10 shadow-2xl text-center">
         <div className="bg-blue-600 w-16 h-16 rounded-[22px] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-200"><Droplets className="text-white" size={32} /></div>
         <h2 className="text-3xl font-black mb-2">FuelTrack Pro</h2>
-        <p className="text-[10px] font-black uppercase text-slate-400 mb-10 tracking-widest">{isRegistering ? 'Criar Nova Conta' : 'Acesso Restrito'}</p>
+        <p className="text-[10px] font-black uppercase text-slate-400 mb-10 tracking-widest">Acesso Restrito</p>
         
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in fade-in slide-in-from-top-2">
@@ -734,46 +750,16 @@ function LoginView({ setCurrentUser }: { setCurrentUser: (user: AppUser | null) 
         )}
 
         <div className="space-y-4">
-          <button 
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full bg-white border border-slate-200 text-slate-700 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-2 mb-4"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-              <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-            Entrar com Google
-          </button>
-
-          <div className="relative flex items-center gap-4 mb-4">
-            <div className="flex-1 h-px bg-slate-100" />
-            <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">ou e-mail corporativo</span>
-            <div className="flex-1 h-px bg-slate-100" />
-          </div>
-
           <form onSubmit={handleAuth} className="space-y-4 text-left">
-            {isRegistering && (
-              <input required placeholder="Seu Nome Completo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-sm" value={name} onChange={e => setName(e.target.value)} />
-            )}
-            <input required type="email" placeholder="E-mail Corporativo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-sm" value={email} onChange={e => setEmail(e.target.value)} />
+            <input required type="text" placeholder="Usuário" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-sm" value={login} onChange={e => setLogin(e.target.value)} />
             <input required type="password" placeholder="Senha" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-sm" value={password} onChange={e => setPassword(e.target.value)} />
             <button disabled={loading} type="submit" className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-colors disabled:opacity-50">
-              {loading ? 'Processando...' : (isRegistering ? 'Cadastrar Minha Conta' : 'Entrar Agora')}
+              {loading ? 'Validando...' : 'Entrar Agora'}
             </button>
           </form>
         </div>
 
-        <button 
-          onClick={() => { setIsRegistering(!isRegistering); setError(''); }} 
-          className="mt-6 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-800 transition-colors"
-        >
-          {isRegistering ? 'Já tenho conta? Fazer Login' : 'Primeiro Acesso? Começar Aqui'}
-        </button>
-
-        <p className="mt-8 text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-loose">Segurança Criptografada<br/>Google Cloud Platform</p>
+        <p className="mt-12 text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-loose">Segurança Criptografada<br/>Interface Administrativa</p>
       </div>
     </div>
   );
