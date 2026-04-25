@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Registered vehicle or heavy equipment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["VEICULO", "EQUIPAMENTO"] },
+        "placa_ou_prefixo": { "type": "string" },
+        "modelo": { "type": "string" },
+        "usa_medida": { "type": "string", "enum": ["KM", "HORIMETRO"] },
+        "odometro_atual": { "type": "number" },
+        "horimetro_atual": { "type": "number" },
+        "odometro_inicial": { "type": "number" },
+        "horimetro_inicial": { "type": "number" },
+        "ativo": { "type": "boolean" },
+        "usuario_id": { "type": "string" }
+      },
+      "required": ["id", "tipo", "placa_ou_prefixo", "modelo", "usa_medida", "odometro_atual", "horimetro_atual", "ativo"]
+    },
+    "Movement": {
+      "title": "Movement",
+      "description": "Fuel consumption or tank entry record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "data_hora": { "type": "string", "format": "date-time" },
+        "tipo_movimento": { "type": "string", "enum": ["CONSUMO", "ENTRADA_BRITAGEM", "ENTRADA_OBRA"] },
+        "litros": { "type": "number" },
+        "veiculo_id": { "type": "string" },
+        "tanque_id": { "type": "string", "enum": ["britagem", "obra"] },
+        "usuario_id": { "type": "string" },
+        "motorista": { "type": "string" },
+        "km_informado": { "type": "number" },
+        "horimetro_informado": { "type": "number" },
+        "observacoes": { "type": "string" },
+        "eficiencia_calculada": { "type": "number" }
+      },
+      "required": ["id", "data_hora", "tipo_movimento", "litros", "usuario_id"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "login": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "operador"] },
+        "name": { "type": "string" },
+        "approved": { "type": "boolean" }
+      },
+      "required": ["id", "login", "role", "name", "approved"]
+    }
+  },
+  "firestore": {
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Collection of vehicles and heavy equipment"
+    },
+    "/movements/{movementId}": {
+      "schema": "Movement",
+      "description": "All fuel and tank movements"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Application user profiles"
+    }
+  }
+}

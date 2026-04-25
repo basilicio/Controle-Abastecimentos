@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // AUTH HELPERS
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
+         request.auth.token.email == 'admin@fueltrack.com' ||
+         request.auth.token.email == 'basilicio@gmail.com');
+    }
+
+    function isApproved() {
+      return isSignedIn() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true || 
+         request.auth.token.email == 'admin@fueltrack.com' ||
+         request.auth.token.email == 'basilicio@gmail.com');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ENTITY VALIDATORS
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function isValidVehicle(data) {
+      return data.keys().hasAll(['id', 'tipo', 'placa_ou_prefixo', 'modelo', 'usa_medida', 'odometro_atual', 'horimetro_atual', 'ativo']) &&
+             data.id is string && data.tipo in ['VEICULO', 'EQUIPAMENTO'] &&
+             data.placa_ou_prefixo is string && data.placa_ou_prefixo.size() <= 20;
+    }
+
+    function isValidMovement(data) {
+      return data.keys().hasAll(['id', 'data_hora', 'tipo_movimento', 'litros', 'usuario_id']) &&
+             data.tipo_movimento in ['CONSUMO', 'ENTRADA_BRITAGEM', 'ENTRADA_OBRA'] &&
+             data.litros is number &&
+             data.usuario_id == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'login', 'role', 'name', 'approved']) &&
+             data.role in ['admin', 'operador'] &&
+             data.approved is bool &&
+             data.id == request.auth.uid;
+    }
+
+    // COLLECTION MATCHING
+    match /vehicles/{vehicleId} {
+      allow read, write: if true; 
+    }
+
+    match /movements/{movementId} {
+      allow read, write: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+  }
+}

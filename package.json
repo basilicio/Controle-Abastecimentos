@@ -4,20 +4,26 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite",
     "build": "vite build",
-    "start": "NODE_ENV=production tsx server.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
+    "@tailwindcss/vite": "^4.0.0",
+    "autoprefixer": "^10.5.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "firebase": "^12.12.0",
+    "framer-motion": "^12.38.0",
     "lowdb": "^7.0.1",
     "lucide-react": "^0.563.0",
+    "postcss": "^8.5.10",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.7.0",
+    "tailwindcss": "^4.2.4",
     "tsx": "^4.21.0"
   },
   "devDependencies": {

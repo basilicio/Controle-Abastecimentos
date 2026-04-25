@@ -21,6 +21,7 @@ export interface AppUser {
   password: string;
   role: 'admin' | 'operador';
   name: string;
+  approved: boolean;
 }
 
 export interface VeiculoEquipamento {
