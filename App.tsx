@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   LayoutDashboard, Truck, Droplets, History, PlusCircle, 
   BarChart3, AlertTriangle, Box, 
   LogOut, ShieldAlert, Settings, AlertCircle, UserPlus, Gauge,
-  Pencil, Trash2, X, RefreshCcw, Database, User, ShieldCheck
+  Pencil, Trash2, X, RefreshCcw, Database, User, ShieldCheck,
+  FileSpreadsheet, Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -36,7 +38,7 @@ const CAPACITY_BRITAGEM = 11000;
 const CAPACITY_OBRA = 3000;
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fleet' | 'movements' | 'tank' | 'reports' | 'users'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fleet' | 'movements' | 'tank' | 'reports' | 'users' | 'audit'>('dashboard');
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -44,6 +46,7 @@ export default function App() {
   const [vehicles, setVehicles] = useState<VeiculoEquipamento[]>([]);
   const [movements, setMovements] = useState<MovimentoTanque[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [tanks, setTanks] = useState<Tanque[]>([
     { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: 0 },
     { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 }
@@ -83,6 +86,7 @@ export default function App() {
     const vQuery = query(collection(db, 'vehicles'));
     const mQuery = query(collection(db, 'movements'), orderBy('data_hora', 'desc'));
     const uQuery = query(collection(db, 'users'));
+    const lQuery = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'));
 
     const unsubV = onSnapshot(vQuery, (snap) => {
       setVehicles(snap.docs.map(d => ({ ...d.data(), id: d.id } as VeiculoEquipamento)));
@@ -111,10 +115,34 @@ export default function App() {
       setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id } as AppUser)));
     });
 
-    return () => { unsubV(); unsubM(); unsubU(); };
+    const unsubL = onSnapshot(lQuery, (snap) => {
+      setLogs(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+
+    return () => { unsubV(); unsubM(); unsubU(); unsubL(); };
   }, [currentUser]);
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => {
+    if (currentUser?.id === 'admin_master_bypass') {
+      setCurrentUser(null);
+    } else {
+      signOut(auth).then(() => setCurrentUser(null));
+    }
+  };
+
+  const logAction = async (type: string, oldData: any, newData: any) => {
+    if (!currentUser) return;
+    const logId = Math.random().toString(36).substr(2, 12);
+    await setDoc(doc(db, 'audit_logs', logId), {
+      id: logId,
+      type,
+      oldData,
+      newData,
+      timestamp: new Date().toISOString(),
+      userId: currentUser.id,
+      userName: currentUser.name
+    });
+  };
 
   if (loading) return <LoadingScreen />;
   if (!currentUser) return <LoginView setCurrentUser={setCurrentUser} />;
@@ -161,14 +189,100 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} />}
-            {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} />}
-            {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} users={users} currentUser={currentUser} />}
+            {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} logAction={logAction} />}
+            {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} users={users} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
             {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} />}
-            {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} />}
+            {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} logAction={logAction} />}
+            {activeTab === 'audit' && currentUser.role === 'admin' && <AuditView logs={logs} logAction={logAction} />}
           </motion.div>
         </AnimatePresence>
       </main>
+    </div>
+  );
+}
+
+function AuditView({ logs, logAction }: any) {
+  const undoAction = async (log: any) => {
+    if (!confirm('Deseja realmente desfazer esta ação?')) return;
+    
+    try {
+      if (log.type === 'VEHICLE_EDIT' || log.type === 'VEHICLE_DELETE') {
+        await setDoc(doc(db, 'vehicles', log.oldData.id), log.oldData);
+      } else if (log.type === 'MOVEMENT_DELETE') {
+        await setDoc(doc(db, 'movements', log.oldData.id), log.oldData);
+      } else if (log.type === 'USER_DELETE') {
+        await setDoc(doc(db, 'users', log.oldData.id), log.oldData);
+      }
+      
+      await deleteDoc(doc(db, 'audit_logs', log.id));
+      alert("Ação desfeita com sucesso!");
+    } catch (e) {
+      alert("Erro ao desfazer ação.");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-black tracking-tight">Histórico de Alterações</h2>
+          <p className="text-[10px] font-black uppercase text-slate-400">Auditoria e Recuperação de Dados</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-[44px] border border-slate-200 overflow-hidden shadow-sm">
+        <table className="w-full text-left font-sans">
+          <thead className="bg-slate-50 border-b">
+            <tr>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Data</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Usuário</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Ação</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Detalhes</th>
+              <th className="px-8 py-5"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {logs.map((l: any) => (
+              <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-8 py-6">
+                  <div className="text-xs font-bold text-slate-700">{new Date(l.timestamp).toLocaleString()}</div>
+                </td>
+                <td className="px-8 py-6">
+                   <div className="text-[10px] font-black uppercase text-blue-600">{l.userName}</div>
+                </td>
+                <td className="px-8 py-6">
+                  <span className={`text-[9px] font-black px-2 py-1 rounded border uppercase ${
+                    l.type.includes('DELETE') ? 'bg-red-50 text-red-600 border-red-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                  }`}>
+                    {l.type === 'VEHICLE_EDIT' && 'Edição de Ativo'}
+                    {l.type === 'VEHICLE_DELETE' && 'Exclusão de Ativo'}
+                    {l.type === 'MOVEMENT_DELETE' && 'Exclusão de Movimento'}
+                  </span>
+                </td>
+                <td className="px-8 py-6">
+                   <div className="text-[10px] font-bold text-slate-400 uppercase max-w-xs truncate">
+                     {l.oldData?.placa_ou_prefixo || l.oldData?.modelo || 'Registro de Combustível'}
+                   </div>
+                </td>
+                <td className="px-8 py-6 text-right">
+                  <button 
+                    onClick={() => undoAction(l)}
+                    className="flex items-center gap-2 ml-auto bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-black transition-all shadow-sm"
+                  >
+                    <RefreshCcw size={14} /> Desfazer
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {logs.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-8 py-20 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Nenhuma alteração registrada</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -203,6 +317,7 @@ function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, isSidebarOpen
           <SidebarItem icon={<History size={18} />} label="Movimentação" active={activeTab === 'movements'} onClick={() => { setActiveTab('movements'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<BarChart3 size={18} />} label="Relatórios" active={activeTab === 'reports'} onClick={() => { setActiveTab('reports'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<Box size={18} />} label="Estoque Tanque" active={activeTab === 'tank'} onClick={() => { setActiveTab('tank'); setIsSidebarOpen(false); }} />
+          {currentUser.role === 'admin' && <SidebarItem icon={<Database size={18} />} label="Auditoria" active={activeTab === 'audit'} onClick={() => { setActiveTab('audit'); setIsSidebarOpen(false); }} />}
           {currentUser.role === 'admin' && <SidebarItem icon={<ShieldAlert size={18} />} label="Usuários" active={activeTab === 'users'} onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} />}
         </ul>
 
@@ -283,22 +398,35 @@ function DashboardView({ tanks, movements, vehicles }: any) {
   );
 }
 
-function FleetView({ vehicles, users, currentUser }: any) {
+function FleetView({ vehicles, users, currentUser, logAction }: any) {
   const [showForm, setShowForm] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
   const [form, setForm] = useState({ tipo: TipoVeiculo.VEICULO, placa_ou_prefixo: '', modelo: '', usa_medida: MedidaUso.KM, odometro_atual: 0, horimetro_atual: 0 });
 
   const saveVehicle = async (v: any) => {
     try {
+      const isUpdate = !!v.id;
+      const oldVehicle = isUpdate ? vehicles.find((veh: any) => veh.id === v.id) : null;
       const id = v.id || Math.random().toString(36).substr(2, 9);
-      await setDoc(doc(db, 'vehicles', id), {
+      
+      const vehicleToSave = {
         ...v,
         id,
         usuario_id: v.usuario_id || currentUser.id,
         odometro_inicial: v.odometro_inicial ?? v.odometro_atual,
         horimetro_inicial: v.horimetro_inicial ?? v.horimetro_atual,
         ativo: true
-      });
+      };
+
+      await setDoc(doc(db, 'vehicles', id), vehicleToSave);
+      
+      if (isUpdate && oldVehicle) {
+        // Log ONLY if there was a change
+        if (JSON.stringify(oldVehicle) !== JSON.stringify(vehicleToSave)) {
+          await logAction('VEHICLE_EDIT', oldVehicle, vehicleToSave);
+        }
+      }
+
       setShowForm(false);
       setEditingVehicle(null);
     } catch (e) {
@@ -307,9 +435,12 @@ function FleetView({ vehicles, users, currentUser }: any) {
   };
 
   const deleteVehicle = async (id: string) => {
+    const v = vehicles.find((veh: any) => veh.id === id);
+    if (!v) return;
     if (confirm('Excluir este ativo?')) {
       try {
         await deleteDoc(doc(db, 'vehicles', id));
+        await logAction('VEHICLE_DELETE', v, null);
       } catch (e) {
         alert("Erro ao excluir veículo.");
       }
@@ -356,7 +487,7 @@ function FleetView({ vehicles, users, currentUser }: any) {
         ))}
       </div>
 
-      {/* Forms/Modals could be moved here for better organization */}
+      {/* Forms/Modals */}
       {showForm && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl">
@@ -374,12 +505,66 @@ function FleetView({ vehicles, users, currentUser }: any) {
           </div>
         </div>
       )}
+
+      {editingVehicle && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black">Editar Ativo</h3>
+              <button onClick={() => setEditingVehicle(null)}><X size={20} /></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); saveVehicle(editingVehicle); }} className="space-y-4">
+              <input required placeholder="Placa / Prefixo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold uppercase" value={editingVehicle.placa_ou_prefixo} onChange={e => setEditingVehicle({...editingVehicle, placa_ou_prefixo: e.target.value.toUpperCase()})} />
+              <input required placeholder="Modelo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={editingVehicle.modelo} onChange={e => setEditingVehicle({...editingVehicle, modelo: e.target.value})} />
+              
+              {currentUser.role === 'admin' && (
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-3">
+                  <div className="flex items-center gap-2 text-amber-600 mb-1">
+                    <ShieldAlert size={14} />
+                    <span className="text-[10px] font-black uppercase">Correção Administrativa</span>
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black uppercase text-slate-400 ml-2">Leitura Atual ({editingVehicle.usa_medida})</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 font-bold text-sm" 
+                      value={editingVehicle.usa_medida === MedidaUso.KM ? editingVehicle.odometro_atual : editingVehicle.horimetro_atual} 
+                      onChange={e => {
+                        const val = parseFloat(e.target.value);
+                        if (editingVehicle.usa_medida === MedidaUso.KM) {
+                          setEditingVehicle({...editingVehicle, odometro_atual: val});
+                        } else {
+                          setEditingVehicle({...editingVehicle, horimetro_atual: val});
+                        }
+                      }} 
+                    />
+                  </div>
+                </div>
+              )}
+              
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Atualizar Ativo</button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function MovementsView({ movements, vehicles, currentUser }: any) {
+function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' as 'britagem' | 'obra' });
+
+  const deleteMovement = async (m: any) => {
+    if (confirm('Excluir este lançamento?')) {
+      try {
+        await deleteDoc(doc(db, 'movements', m.id));
+        await logAction('MOVEMENT_DELETE', m, null);
+      } catch (e) {
+        alert("Erro ao excluir lançamento.");
+      }
+    }
+  };
 
   const addMov = async (e: any) => {
     e.preventDefault();
@@ -459,6 +644,11 @@ function MovementsView({ movements, vehicles, currentUser }: any) {
              <div className={`text-xl font-black ${m.litros > 0 ? 'text-green-600' : 'text-red-500'}`}>
                 {m.litros > 0 ? '+' : ''}{m.litros.toLocaleString()} L
              </div>
+             {currentUser.role === 'admin' && (
+               <button onClick={() => deleteMovement(m)} className="ml-4 p-2 text-slate-300 hover:text-red-500 transition-colors">
+                 <Trash2 size={16} />
+               </button>
+             )}
           </div>
         ))}
       </div>
@@ -495,33 +685,109 @@ function TankView({ tanks }: any) {
 }
 
 function ReportsView({ movements, vehicles }: any) {
-  // Simplified report list
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const filteredMovements = useMemo(() => {
+    return movements.filter((m: any) => {
+      const date = m.data_hora.split('T')[0];
+      return date >= startDate && date <= endDate;
+    });
+  }, [movements, startDate, endDate]);
+
+  const exportToExcel = () => {
+    const data = filteredMovements.map((m: any) => {
+      const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
+      return {
+        'Data/Hora': new Date(m.data_hora).toLocaleString(),
+        'Tipo': m.tipo_movimento,
+        'Tanque': m.tanque_id,
+        'Ativo': vehicle ? vehicle.placa_ou_prefixo : 'N/A',
+        'Modelo': vehicle ? vehicle.modelo : 'N/A',
+        'Litros': m.litros,
+        'Leitura (KM/H)': m.km_informado || m.horimetro_informado || '',
+        'Motorista': m.motorista || ''
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimentações');
+    XLSX.writeFile(workbook, `Relatorio_FuelTrack_${startDate}_a_${endDate}.xlsx`);
+  };
+
   return (
-    <div className="bg-white p-10 rounded-[44px] border border-slate-200 shadow-sm">
-      <h2 className="text-2xl font-black mb-8 flex items-center gap-3"><BarChart3 className="text-blue-600" /> Rendimento por Ativo</h2>
-      <div className="space-y-4">
-        {vehicles.map((v: any) => {
-          const vMs = movements.filter((m:any) => m.veiculo_id === v.id);
-          const totalL = Math.abs(vMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
-          return (
-            <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
-              <div>
-                <div className="font-black uppercase">{v.placa_ou_prefixo}</div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
+    <div className="space-y-6">
+      <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+          <div>
+            <h2 className="text-2xl font-black flex items-center gap-3"><BarChart3 className="text-blue-600" /> Relatórios de Consumo</h2>
+            <p className="text-[10px] font-black uppercase text-slate-400 mt-1">Exportação e análise de dados</p>
+          </div>
+          <button 
+            onClick={exportToExcel}
+            className="w-full md:w-auto bg-green-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-100 hover:bg-green-700 transition-all"
+          >
+            <FileSpreadsheet size={18} /> Exportar Excel
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+           <div className="space-y-1">
+             <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Data Inicial</label>
+             <div className="relative">
+               <Calendar className="absolute left-4 top-3.5 text-slate-400" size={18} />
+               <input 
+                type="date" 
+                className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-4 py-3 font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500/20" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)} 
+               />
+             </div>
+           </div>
+           <div className="space-y-1">
+             <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Data Final</label>
+             <div className="relative">
+               <Calendar className="absolute left-4 top-3.5 text-slate-400" size={18} />
+               <input 
+                type="date" 
+                className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-4 py-3 font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500/20" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)} 
+               />
+             </div>
+           </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Consumo por Ativo no Período</h3>
+          {vehicles.map((v: any) => {
+            const vMs = filteredMovements.filter((m:any) => m.veiculo_id === v.id);
+            const totalL = Math.abs(vMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
+            return (
+              <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                <div>
+                  <div className="font-black uppercase text-slate-700">{v.placa_ou_prefixo}</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-black text-slate-900">{totalL.toLocaleString()} <span className="text-xs text-slate-300">L</span></div>
+                  <div className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">Total no período</div>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-lg font-black">{totalL.toLocaleString()} L</div>
-                <div className="text-[10px] font-black text-blue-500 uppercase">Total Consumido</div>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function UserManagementView({ users }: any) {
+function UserManagementView({ users, logAction }: any) {
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState<Partial<AppUser>>({ name: '', login: '', password: '', role: 'operador', approved: true });
@@ -563,9 +829,12 @@ function UserManagementView({ users }: any) {
 
   const deleteUser = async (id: string) => {
     if (id === 'admin_master_bypass') return alert("O administrador mestre não pode ser removido.");
+    const u = users.find((user: any) => user.id === id);
+    if (!u) return;
     if (confirm("Excluir este usuário?")) {
       try {
         await deleteDoc(doc(db, 'users', id));
+        await logAction('USER_DELETE', u, null);
       } catch (e) {
         alert("Erro ao excluir usuário.");
       }

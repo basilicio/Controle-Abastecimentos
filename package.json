@@ -24,7 +24,8 @@
     "react-dom": "^19.2.4",
     "recharts": "^3.7.0",
     "tailwindcss": "^4.2.4",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
