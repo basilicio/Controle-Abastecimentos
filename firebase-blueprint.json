@@ -51,6 +51,21 @@
         "approved": { "type": "boolean" }
       },
       "required": ["id", "login", "role", "name", "approved"]
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "Records of administrative actions for auditing purposes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "oldData": { "type": "object" },
+        "newData": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "userId"]
     }
   },
   "firestore": {
@@ -65,6 +80,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Application user profiles"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Audit records for administrative changes"
     }
   }
 }

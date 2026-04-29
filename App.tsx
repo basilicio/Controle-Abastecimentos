@@ -17,21 +17,71 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  deleteDoc, 
-  orderBy,
-  getDoc
-} from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, orderBy, onSnapshot, collection, query, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from './src/lib/firebase';
 import { 
   TipoVeiculo, MedidaUso, TipoMovimento, VeiculoEquipamento, 
   MovimentoTanque, Tanque, AppUser 
 } from './types';
+
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
+  }
+}
+testConnection();
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 
 // Constants
 const CAPACITY_BRITAGEM = 11000;
@@ -69,6 +119,8 @@ export default function App() {
             // If we are in the middle of registration, wait for the doc
             // We don't set currentUser to null yet to avoid flickering LoginView
           }
+        }, (error) => {
+           handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
         });
         return () => unsubDoc();
       } else {
@@ -90,6 +142,8 @@ export default function App() {
 
     const unsubV = onSnapshot(vQuery, (snap) => {
       setVehicles(snap.docs.map(d => ({ ...d.data(), id: d.id } as VeiculoEquipamento)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'vehicles');
     });
 
     const unsubM = onSnapshot(mQuery, (snap) => {
@@ -109,14 +163,20 @@ export default function App() {
         { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: balanceBritagem },
         { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: balanceObra }
       ]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'movements');
     });
 
     const unsubU = onSnapshot(uQuery, (snap) => {
       setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id } as AppUser)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     const unsubL = onSnapshot(lQuery, (snap) => {
       setLogs(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'audit_logs');
     });
 
     return () => { unsubV(); unsubM(); unsubU(); unsubL(); };
@@ -132,16 +192,20 @@ export default function App() {
 
   const logAction = async (type: string, oldData: any, newData: any) => {
     if (!currentUser) return;
-    const logId = Math.random().toString(36).substr(2, 12);
-    await setDoc(doc(db, 'audit_logs', logId), {
-      id: logId,
-      type,
-      oldData,
-      newData,
-      timestamp: new Date().toISOString(),
-      userId: currentUser.id,
-      userName: currentUser.name
-    });
+    try {
+      const logId = Math.random().toString(36).substr(2, 12);
+      await setDoc(doc(db, 'audit_logs', logId), {
+        id: logId,
+        type,
+        oldData,
+        newData,
+        timestamp: new Date().toISOString(),
+        userId: currentUser.id,
+        userName: currentUser.name
+      });
+    } catch (e) {
+      console.error("Erro ao registrar log de auditoria", e);
+    }
   };
 
   if (loading) return <LoadingScreen />;
@@ -218,7 +282,7 @@ function AuditView({ logs, logAction }: any) {
       await deleteDoc(doc(db, 'audit_logs', log.id));
       alert("Ação desfeita com sucesso!");
     } catch (e) {
-      alert("Erro ao desfazer ação.");
+      handleFirestoreError(e, OperationType.WRITE, `undo_log/${log.id}`);
     }
   };
 
@@ -403,6 +467,10 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
   const [form, setForm] = useState({ tipo: TipoVeiculo.VEICULO, placa_ou_prefixo: '', modelo: '', usa_medida: MedidaUso.KM, odometro_atual: 0, horimetro_atual: 0 });
 
+  const sortedVehicles = useMemo(() => {
+    return [...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo));
+  }, [vehicles]);
+
   const saveVehicle = async (v: any) => {
     try {
       const isUpdate = !!v.id;
@@ -430,7 +498,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
       setShowForm(false);
       setEditingVehicle(null);
     } catch (e) {
-      alert("Erro ao salvar veículo. Verifique permissões.");
+      handleFirestoreError(e, OperationType.WRITE, 'vehicles');
     }
   };
 
@@ -442,7 +510,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
         await deleteDoc(doc(db, 'vehicles', id));
         await logAction('VEHICLE_DELETE', v, null);
       } catch (e) {
-        alert("Erro ao excluir veículo.");
+        handleFirestoreError(e, OperationType.DELETE, `vehicles/${id}`);
       }
     }
   };
@@ -455,7 +523,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {vehicles.map((v: any) => (
+        {sortedVehicles.map((v: any) => (
           <motion.div 
             layout
             key={v.id} 
@@ -554,6 +622,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
 
 function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' as 'britagem' | 'obra' });
+  const [editingMovement, setEditingMovement] = useState<any>(null);
 
   const deleteMovement = async (m: any) => {
     if (confirm('Excluir este lançamento?')) {
@@ -561,8 +630,20 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
         await deleteDoc(doc(db, 'movements', m.id));
         await logAction('MOVEMENT_DELETE', m, null);
       } catch (e) {
-        alert("Erro ao excluir lançamento.");
+        handleFirestoreError(e, OperationType.DELETE, `movements/${m.id}`);
       }
+    }
+  };
+
+  const saveEditedMovement = async (e: any) => {
+    e.preventDefault();
+    try {
+      const oldM = movements.find((m: any) => m.id === editingMovement.id);
+      await setDoc(doc(db, 'movements', editingMovement.id), editingMovement);
+      await logAction('MOVEMENT_EDIT', oldM, editingMovement);
+      setEditingMovement(null);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `movements/${editingMovement.id}`);
     }
   };
 
@@ -599,7 +680,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
       }
       setForm({ ...form, litros: '', leitura: '' });
     } catch (e) {
-      alert("Erro ao lançar movimento.");
+      handleFirestoreError(e, OperationType.WRITE, 'movements');
     }
   };
 
@@ -645,13 +726,46 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                 {m.litros > 0 ? '+' : ''}{m.litros.toLocaleString()} L
              </div>
              {currentUser.role === 'admin' && (
-               <button onClick={() => deleteMovement(m)} className="ml-4 p-2 text-slate-300 hover:text-red-500 transition-colors">
-                 <Trash2 size={16} />
-               </button>
+               <div className="flex items-center gap-2 ml-4">
+                 <button onClick={() => setEditingMovement(m)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors">
+                   <Pencil size={16} />
+                 </button>
+                 <button onClick={() => deleteMovement(m)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                   <Trash2 size={16} />
+                 </button>
+               </div>
              )}
           </div>
         ))}
       </div>
+
+      {editingMovement && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl">
+            <h3 className="text-xl font-black mb-6">Editar Lançamento</h3>
+            <form onSubmit={saveEditedMovement} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Litros</label>
+                <input required type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={Math.abs(editingMovement.litros)} onChange={e => setEditingMovement({...editingMovement, litros: editingMovement.litros < 0 ? -Math.abs(parseFloat(e.target.value)) : Math.abs(parseFloat(e.target.value))})} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
+                <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
+                  else setEditingMovement({...editingMovement, horimetro_informado: val});
+                }} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora</label>
+                <input type="datetime-local" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.data_hora.substring(0, 16)} onChange={e => setEditingMovement({...editingMovement, data_hora: e.target.value})} />
+              </div>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Salvar Alterações</button>
+              <button type="button" onClick={() => setEditingMovement(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -799,7 +913,7 @@ function UserManagementView({ users, logAction }: any) {
         approved: !user.approved
       });
     } catch (e) {
-      alert("Erro ao alterar status de aprovação.");
+      handleFirestoreError(e, OperationType.WRITE, `users/${user.id}`);
     }
   };
 
@@ -810,7 +924,7 @@ function UserManagementView({ users, logAction }: any) {
       await setDoc(doc(db, 'users', editingUser.id), editingUser);
       setEditingUser(null);
     } catch (e) {
-      alert("Erro ao salvar usuário.");
+      handleFirestoreError(e, OperationType.WRITE, `users/${editingUser.id}`);
     }
   };
 
@@ -823,7 +937,7 @@ function UserManagementView({ users, logAction }: any) {
       setShowAddForm(false);
       setNewUser({ name: '', login: '', password: '', role: 'operador', approved: true });
     } catch (e) {
-      alert("Erro ao criar usuário.");
+      handleFirestoreError(e, OperationType.WRITE, 'users');
     }
   };
 
@@ -836,7 +950,7 @@ function UserManagementView({ users, logAction }: any) {
         await deleteDoc(doc(db, 'users', id));
         await logAction('USER_DELETE', u, null);
       } catch (e) {
-        alert("Erro ao excluir usuário.");
+        handleFirestoreError(e, OperationType.DELETE, `users/${id}`);
       }
     }
   };
@@ -966,9 +1080,13 @@ function LoginView({ setCurrentUser }: { setCurrentUser: (user: AppUser | null) 
           approved: true,
           password: 'admin'
         };
-        await setDoc(doc(db, 'users', adminUser.id), adminUser);
-        setCurrentUser(adminUser);
-        setLoading(false);
+        try {
+          await setDoc(doc(db, 'users', adminUser.id), adminUser);
+          setCurrentUser(adminUser);
+          setLoading(false);
+        } catch (e) {
+          handleFirestoreError(e, OperationType.WRITE, `users/${adminUser.id}`);
+        }
         return;
       }
 

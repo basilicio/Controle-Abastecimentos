@@ -66,5 +66,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if true;
     }
+
+    match /audit_logs/{logId} {
+      allow read, write: if true;
+    }
   }
 }
