@@ -805,13 +805,44 @@ function ReportsView({ movements, vehicles }: any) {
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all');
 
   const filteredMovements = useMemo(() => {
-    return movements.filter((m: any) => {
+    let filtered = movements.filter((m: any) => {
       const date = m.data_hora.split('T')[0];
       return date >= startDate && date <= endDate;
     });
-  }, [movements, startDate, endDate]);
+
+    if (selectedVehicleId !== 'all') {
+      filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
+    }
+
+    // Sort descending by date (Point 1)
+    return [...filtered].sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
+  }, [movements, startDate, endDate, selectedVehicleId]);
+
+  const calculateMetric = (m: any, prevM: any, vehicle: any) => {
+    if (!prevM || !m || !vehicle) return null;
+    
+    const liters = Math.abs(m.litros);
+    if (liters === 0) return null;
+
+    if (vehicle.usa_medida === MedidaUso.KM) {
+      if (m.km_informado && prevM.km_informado) {
+        const diff = m.km_informado - prevM.km_informado;
+        if (diff <= 0) return null;
+        return (diff / liters).toFixed(2) + ' KM/L';
+      }
+    } else {
+      if (m.horimetro_informado && prevM.horimetro_informado) {
+        const diff = m.horimetro_informado - prevM.horimetro_informado;
+        if (diff <= 0) return null;
+        // User asked for Litros/Hora
+        return (liters / diff).toFixed(2) + ' L/H';
+      }
+    }
+    return null;
+  };
 
   const exportToExcel = () => {
     const data = filteredMovements.map((m: any) => {
@@ -840,7 +871,7 @@ function ReportsView({ movements, vehicles }: any) {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
           <div>
             <h2 className="text-2xl font-black flex items-center gap-3"><BarChart3 className="text-blue-600" /> Relatórios de Consumo</h2>
-            <p className="text-[10px] font-black uppercase text-slate-400 mt-1">Exportação e análise de dados</p>
+            <p className="text-[10px] font-black uppercase text-slate-400 mt-1">Análise de rendimento e exportação</p>
           </div>
           <button 
             onClick={exportToExcel}
@@ -850,7 +881,7 @@ function ReportsView({ movements, vehicles }: any) {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
            <div className="space-y-1">
              <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Data Inicial</label>
              <div className="relative">
@@ -875,27 +906,127 @@ function ReportsView({ movements, vehicles }: any) {
                />
              </div>
            </div>
+           <div className="space-y-1">
+             <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Filtrar Ativo</label>
+             <div className="relative">
+               <Truck className="absolute left-4 top-3.5 text-slate-400" size={18} />
+               <select 
+                className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-4 py-3 font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none" 
+                value={selectedVehicleId} 
+                onChange={e => setSelectedVehicleId(e.target.value)}
+               >
+                 <option value="all">Todos os Ativos</option>
+                 {vehicles.map((v: any) => (
+                   <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
+                 ))}
+               </select>
+             </div>
+           </div>
         </div>
 
-        <div className="space-y-4">
-          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Consumo por Ativo no Período</h3>
-          {vehicles.map((v: any) => {
-            const vMs = filteredMovements.filter((m:any) => m.veiculo_id === v.id);
-            const totalL = Math.abs(vMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
-            return (
-              <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                <div>
-                  <div className="font-black uppercase text-slate-700">{v.placa_ou_prefixo}</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
+        {selectedVehicleId === 'all' ? (
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Consumo Geral por Ativo</h3>
+            {vehicles.map((v: any) => {
+              const vMs = filteredMovements.filter((m:any) => m.veiculo_id === v.id);
+              const sortedVMs = [...vMs].sort((a,b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+              const totalL = Math.abs(vMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
+              
+              let periodMetric = 'N/A';
+              if (sortedVMs.length >= 2) {
+                const first = sortedVMs[0];
+                const last = sortedVMs[sortedVMs.length - 1];
+                const totalPeriodL = Math.abs(sortedVMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
+                
+                if (v.usa_medida === MedidaUso.KM) {
+                  const diff = (last.km_informado ?? 0) - (first.km_informado ?? 0);
+                  if (diff > 0 && totalPeriodL > 0) periodMetric = (diff / totalPeriodL).toFixed(2) + ' KM/L';
+                } else {
+                  const diff = (last.horimetro_informado ?? 0) - (first.horimetro_informado ?? 0);
+                  if (diff > 0 && totalPeriodL > 0) periodMetric = (totalPeriodL / diff).toFixed(2) + ' L/H';
+                }
+              }
+
+              return (
+                <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                  <div>
+                    <div className="font-black uppercase text-slate-700">{v.placa_ou_prefixo}</div>
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
+                    <div className="text-[9px] font-black text-amber-500 uppercase mt-1">Média: {periodMetric}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-black text-slate-900">{totalL.toLocaleString()} <span className="text-xs text-slate-300">L</span></div>
+                    <div className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">Total no período</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xl font-black text-slate-900">{totalL.toLocaleString()} <span className="text-xs text-slate-300">L</span></div>
-                  <div className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">Total no período</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Histórico de Abastecimentos</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="border-b border-slate-100">
+                  <tr>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Data/Hora</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Motorista</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Leitura</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Litros</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Rendimento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filteredMovements.map((m: any, idx: number) => {
+                    const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
+                    // To get the metric, we need the PREVIOUS movement in chronological order 
+                    // (since current list is DESC, the previous chronological is idx + 1)
+                    // But we must be careful: the list is filtered. 
+                    // For better precision, we'd need to find the movement just before this one in the master list.
+                    
+                    const vehicleAllMovements = movements
+                      .filter((allM: any) => allM.veiculo_id === m.veiculo_id)
+                      .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+                    
+                    const currentIdx = vehicleAllMovements.findIndex((allM: any) => allM.id === m.id);
+                    const prevM = currentIdx > 0 ? vehicleAllMovements[currentIdx - 1] : null;
+                    const metric = calculateMetric(m, prevM, vehicle);
+
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-4 text-xs font-bold text-slate-600">
+                          {new Date(m.data_hora).toLocaleDateString()} <span className="text-slate-300 ml-1">{new Date(m.data_hora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </td>
+                        <td className="py-4 text-[10px] font-black uppercase text-slate-400">
+                          {m.motorista || '-'}
+                        </td>
+                        <td className="py-4 text-right text-xs font-bold text-slate-600">
+                          {m.km_informado?.toLocaleString() || m.horimetro_informado?.toLocaleString() || '-'} 
+                          <span className="text-[8px] ml-1 text-slate-300 uppercase">{vehicle?.usa_medida}</span>
+                        </td>
+                        <td className="py-4 text-right text-xs font-black text-slate-900">
+                          {Math.abs(m.litros).toLocaleString()} L
+                        </td>
+                        <td className="py-4 text-right">
+                          {metric ? (
+                            <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">{metric}</span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-200 uppercase">N/A</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredMovements.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-20 text-center text-[10px] font-black uppercase text-slate-300 tracking-widest">Nenhum registro encontrado no período</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
