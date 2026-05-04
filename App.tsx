@@ -273,7 +273,7 @@ function AuditView({ logs, logAction }: any) {
     try {
       if (log.type === 'VEHICLE_EDIT' || log.type === 'VEHICLE_DELETE') {
         await setDoc(doc(db, 'vehicles', log.oldData.id), log.oldData);
-      } else if (log.type === 'MOVEMENT_DELETE') {
+      } else if (log.type === 'MOVEMENT_DELETE' || log.type === 'MOVEMENT_EDIT') {
         await setDoc(doc(db, 'movements', log.oldData.id), log.oldData);
       } else if (log.type === 'USER_DELETE') {
         await setDoc(doc(db, 'users', log.oldData.id), log.oldData);
@@ -322,6 +322,7 @@ function AuditView({ logs, logAction }: any) {
                     {l.type === 'VEHICLE_EDIT' && 'Edição de Ativo'}
                     {l.type === 'VEHICLE_DELETE' && 'Exclusão de Ativo'}
                     {l.type === 'MOVEMENT_DELETE' && 'Exclusão de Movimento'}
+                    {l.type === 'MOVEMENT_EDIT' && 'Edição de Movimento'}
                   </span>
                 </td>
                 <td className="px-8 py-6">
@@ -623,6 +624,27 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
 function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' as 'britagem' | 'obra' });
   const [editingMovement, setEditingMovement] = useState<any>(null);
+  
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all');
+
+  const filteredMovements = useMemo(() => {
+    let filtered = movements.filter((m: any) => {
+      const date = m.data_hora.split('T')[0];
+      return date >= startDate && date <= endDate;
+    });
+
+    if (selectedVehicleId !== 'all') {
+      filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
+    }
+
+    return filtered;
+  }, [movements, startDate, endDate, selectedVehicleId]);
 
   const deleteMovement = async (m: any) => {
     if (confirm('Excluir este lançamento?')) {
@@ -713,7 +735,34 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
         </div>
       </div>
       <div className="lg:col-span-8 space-y-4">
-        {movements.map((m: any) => (
+        {/* Filters and List Header */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 space-y-1">
+              <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Período</label>
+              <div className="flex items-center gap-2">
+                <input type="date" className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                <span className="text-slate-300">/</span>
+                <input type="date" className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex-1 space-y-1">
+              <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Ativo</label>
+              <select 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold" 
+                value={selectedVehicleId} 
+                onChange={e => setSelectedVehicleId(e.target.value)}
+              >
+                <option value="all">Todos os Ativos</option>
+                {vehicles.map((v: any) => (
+                  <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {filteredMovements.map((m: any) => (
           <div key={m.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center">
              <div>
                 <div className="text-[10px] font-black text-slate-400 uppercase">{new Date(m.data_hora).toLocaleString()}</div>
@@ -737,6 +786,11 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
              )}
           </div>
         ))}
+        {filteredMovements.length === 0 && (
+          <div className="p-20 text-center text-slate-300 font-black uppercase text-xs tracking-widest bg-white rounded-3xl border border-dashed border-slate-200">
+            Nenhum lançamento encontrado
+          </div>
+        )}
       </div>
 
       {editingMovement && (
