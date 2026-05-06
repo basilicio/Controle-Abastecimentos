@@ -34,6 +34,8 @@
         "motorista": { "type": "string" },
         "km_informado": { "type": "number" },
         "horimetro_informado": { "type": "number" },
+        "valor_total": { "type": "number" },
+        "valor_unitario": { "type": "number" },
         "observacoes": { "type": "string" },
         "eficiencia_calculada": { "type": "number" }
       },

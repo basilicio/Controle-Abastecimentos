@@ -49,6 +49,8 @@ export interface MovimentoTanque {
   motorista?: string;
   km_informado?: number;
   horimetro_informado?: number;
+  valor_total?: number; // Valor da NF
+  valor_unitario?: number; // Valor calculado do litro
   observacoes: string;
   eficiencia_calculada?: number;
 }

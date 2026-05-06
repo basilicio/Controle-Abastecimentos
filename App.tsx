@@ -420,11 +420,39 @@ function SidebarItem({ icon, label, active, onClick }: { icon: React.ReactNode, 
 }
 
 function DashboardView({ tanks, movements, vehicles }: any) {
-  const totalLitersConsumidos = Math.abs(movements.filter((m: any) => m.litros < 0).reduce((acc: number, curr: any) => acc + curr.litros, 0));
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const monthStr = now.toISOString().substring(0, 7);
+  const yearStr = now.getFullYear().toString();
+
+  const totalConsumedToday = Math.abs(movements.filter((m: any) => m.litros < 0 && m.data_hora.startsWith(todayStr)).reduce((acc: number, curr: any) => acc + curr.litros, 0));
+  const totalConsumedMonth = Math.abs(movements.filter((m: any) => m.litros < 0 && m.data_hora.startsWith(monthStr)).reduce((acc: number, curr: any) => acc + curr.litros, 0));
+  const totalConsumedYear = Math.abs(movements.filter((m: any) => m.litros < 0 && m.data_hora.startsWith(yearStr)).reduce((acc: number, curr: any) => acc + curr.litros, 0));
   
   return (
     <div className="space-y-6">
       <header><h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Status da Frota</h2></header>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Hoje</div>
+          <div className="text-3xl font-black text-blue-600">{totalConsumedToday.toLocaleString()} <span className="text-sm text-slate-300">L</span></div>
+          <div className="mt-2 h-1 w-12 bg-blue-100 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-600" style={{ width: '60%' }}></div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Mensal</div>
+          <div className="text-3xl font-black text-slate-900">{totalConsumedMonth.toLocaleString()} <span className="text-sm text-slate-300">L</span></div>
+          <div className="text-[9px] font-black text-slate-400 mt-2 uppercase">Competência: {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(now)}</div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Anual</div>
+          <div className="text-3xl font-black text-slate-900">{totalConsumedYear.toLocaleString()} <span className="text-sm text-slate-300">L</span></div>
+          <div className="text-[9px] font-black text-slate-400 mt-2 uppercase">Acumulado {yearStr}</div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {tanks.map((t: any) => {
           const percent = Math.min(100, Math.max(0, (t.saldo_atual / t.capacidade_litros) * 100));
@@ -454,8 +482,8 @@ function DashboardView({ tanks, movements, vehicles }: any) {
         <div className="bg-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl flex flex-row md:flex-col items-center md:items-start justify-between">
           <Droplets className="text-blue-500" size={32} />
           <div className="text-right md:text-left">
-            <div className="text-[10px] font-black opacity-60 uppercase">Total Consumido</div>
-            <div className="text-2xl md:text-3xl font-black">{totalLitersConsumidos.toLocaleString()} L</div>
+            <div className="text-[10px] font-black opacity-60 uppercase">Saldo Total</div>
+            <div className="text-2xl md:text-3xl font-black">{tanks.reduce((acc: any, t: any) => acc + t.saldo_atual, 0).toLocaleString()} L</div>
           </div>
         </div>
       </div>
@@ -623,7 +651,18 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
 
 function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' as 'britagem' | 'obra' });
+  const [totalValue, setTotalValue] = useState<string>('');
+  const [unitPrice, setUnitPrice] = useState<string>('');
   const [editingMovement, setEditingMovement] = useState<any>(null);
+
+  useEffect(() => {
+    if (totalValue && form.litros && parseFloat(form.litros) > 0) {
+      const calc = parseFloat(totalValue) / parseFloat(form.litros);
+      setUnitPrice(calc.toFixed(3));
+    } else {
+      setUnitPrice('');
+    }
+  }, [totalValue, form.litros]);
   
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -684,6 +723,8 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
         motorista: form.motorista,
         data_hora: new Date().toISOString(),
         usuario_id: currentUser.id,
+        valor_total: totalValue ? parseFloat(totalValue) : null,
+        valor_unitario: unitPrice ? parseFloat(unitPrice) : null,
         observacoes: ''
       };
 
@@ -701,6 +742,8 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
         }
       }
       setForm({ ...form, litros: '', leitura: '' });
+      setTotalValue('');
+      setUnitPrice('');
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'movements');
     }
@@ -712,22 +755,60 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
         <div className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm">
           <h3 className="text-xl font-black mb-6">Lançar Movimento</h3>
           <form onSubmit={addMov} className="space-y-4">
-            <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as any})}>
-              <option value={TipoMovimento.CONSUMO}>Saída (Consumo)</option>
-              <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Britagem</option>
-              <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Obra</option>
-            </select>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tipo de Operação</label>
+              <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as any})}>
+                <option value={TipoMovimento.CONSUMO}>Saída (Abastecimento)</option>
+                <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Diesel - Britagem</option>
+                <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Diesel - Obra</option>
+              </select>
+            </div>
             
-            <input placeholder="Litros" required type="number" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" value={form.litros} onChange={e => setForm({...form, litros: e.target.value})} />
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Quantidade (Litros)</label>
+              <input placeholder="0,00" required type="number" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" value={form.litros} onChange={e => setForm({...form, litros: e.target.value})} />
+            </div>
+
+            {(form.tipo === TipoMovimento.ENTRADA_BRITAGEM || form.tipo === TipoMovimento.ENTRADA_OBRA) && (
+              <div className="p-4 bg-blue-50 rounded-2xl space-y-3">
+                <div className="text-[9px] font-black uppercase text-blue-400">Calculadora de Preço</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                     <label className="text-[8px] font-black uppercase text-slate-400">Valor Total NF</label>
+                     <input type="number" step="0.01" placeholder="R$ 0,00" className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" value={totalValue} onChange={e => setTotalValue(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-[8px] font-black uppercase text-slate-400">Preço Unitário</label>
+                     <input type="text" readOnly placeholder="R$ 0,000" className="w-full bg-slate-50 border border-blue-100 rounded-xl px-3 py-2 text-xs font-black text-blue-600" value={unitPrice ? `R$ ${unitPrice}` : ''} />
+                  </div>
+                </div>
+              </div>
+            )}
             
             {form.tipo === TipoMovimento.CONSUMO && (
               <>
-                <select required className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.veiculoId} onChange={e => setForm({...form, veiculoId: e.target.value})}>
-                  <option value="">Selecione Ativo</option>
-                  {vehicles.map((v:any) => <option key={v.id} value={v.id}>{v.placa_ou_prefixo}</option>)}
-                </select>
-                <input placeholder="Leitura (KM/H)" required type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.leitura} onChange={e => setForm({...form, leitura: e.target.value})} />
-                <input placeholder="Motorista" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.motorista} onChange={e => setForm({...form, motorista: e.target.value})} />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
+                  <select required className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => setForm({...form, tanqueId: e.target.value as any})}>
+                    <option value="britagem">Tanque Britagem</option>
+                    <option value="obra">Tanque Obra</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo</label>
+                  <select required className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.veiculoId} onChange={e => setForm({...form, veiculoId: e.target.value})}>
+                    <option value="">Selecione Ativo</option>
+                    {vehicles.map((v:any) => <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Leitura Atual (KM/H)</label>
+                  <input placeholder="000.00" required type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.leitura} onChange={e => setForm({...form, leitura: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Operador</label>
+                  <input placeholder="Nome completo" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.motorista} onChange={e => setForm({...form, motorista: e.target.value})} />
+                </div>
               </>
             )}
             <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-700 transition-all">Lançar Registro</button>
@@ -987,17 +1068,30 @@ function ReportsView({ movements, vehicles }: any) {
               const totalL = Math.abs(vMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
               
               let periodMetric = 'N/A';
-              if (sortedVMs.length >= 2) {
-                const first = sortedVMs[0];
-                const last = sortedVMs[sortedVMs.length - 1];
-                const totalPeriodL = Math.abs(sortedVMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
+              const movementsWithReading = sortedVMs.filter(m => v.usa_medida === MedidaUso.KM ? (m.km_informado !== undefined && m.km_informado !== null) : (m.horimetro_informado !== undefined && m.horimetro_informado !== null));
+
+              if (movementsWithReading.length >= 2) {
+                const first = movementsWithReading[0];
+                const last = movementsWithReading[movementsWithReading.length - 1];
                 
+                // Sum liters of all movements between first and last reading (inclusive)
+                // We exclude the first fueling's liters because those liters were consumed BEFORE this period's distance calculation
+                const inBetweenMovements = sortedVMs.filter(m => 
+                   new Date(m.data_hora) >= new Date(first.data_hora) && 
+                   new Date(m.data_hora) <= new Date(last.data_hora)
+                );
+                
+                const totalLitrosCalculo = Math.abs(inBetweenMovements.reduce((acc, curr, idx) => {
+                  // Standard fuel consumption: we count all fuel added AFTER the first reading up to the last reading
+                  return idx === 0 ? acc : acc + curr.litros;
+                }, 0));
+
                 if (v.usa_medida === MedidaUso.KM) {
                   const diff = (last.km_informado ?? 0) - (first.km_informado ?? 0);
-                  if (diff > 0 && totalPeriodL > 0) periodMetric = (diff / totalPeriodL).toFixed(2) + ' KM/L';
+                  if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (diff / totalLitrosCalculo).toFixed(2) + ' KM/L';
                 } else {
                   const diff = (last.horimetro_informado ?? 0) - (first.horimetro_informado ?? 0);
-                  if (diff > 0 && totalPeriodL > 0) periodMetric = (totalPeriodL / diff).toFixed(2) + ' L/H';
+                  if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (totalLitrosCalculo / diff).toFixed(2) + ' L/H';
                 }
               }
 
@@ -1043,7 +1137,17 @@ function ReportsView({ movements, vehicles }: any) {
                       .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
                     
                     const currentIdx = vehicleAllMovements.findIndex((allM: any) => allM.id === m.id);
-                    const prevM = currentIdx > 0 ? vehicleAllMovements[currentIdx - 1] : null;
+                    // Find previous movement that HAS a reading
+                    let prevM = null;
+                    if (currentIdx > 0) {
+                      for (let i = currentIdx - 1; i >= 0; i--) {
+                        const checkM = vehicleAllMovements[i];
+                        if (vehicle.usa_medida === MedidaUso.KM ? checkM.km_informado : checkM.horimetro_informado) {
+                          prevM = checkM;
+                          break;
+                        }
+                      }
+                    }
                     const metric = calculateMetric(m, prevM, vehicle);
 
                     return (
