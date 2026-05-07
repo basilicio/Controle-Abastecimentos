@@ -99,6 +99,9 @@ export default function App() {
   const [logs, setLogs] = useState<any[]>([]);
   const [tanks, setTanks] = useState<Tanque[]>([
     { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: 0 },
+    { id: 'wagner', nome: 'Tanque Wagner', capacidade_litros: 5000, saldo_atual: 0 },
+    { id: 'marcus', nome: 'Tanque Marcus', capacidade_litros: 5000, saldo_atual: 0 },
+    { id: 'paulo', nome: 'Tanque Paulo', capacidade_litros: 5000, saldo_atual: 0 },
     { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 }
   ]);
 
@@ -150,19 +153,13 @@ export default function App() {
       const ms = snap.docs.map(d => ({ ...d.data(), id: d.id } as MovimentoTanque));
       setMovements(ms);
       
-      // Calculate balanced tanks
-      const balanceBritagem = ms.filter(mov => 
-        mov.tanque_id === 'britagem' || mov.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM
-      ).reduce((acc, curr) => acc + curr.litros, 0);
-
-      const balanceObra = ms.filter(mov => 
-        mov.tanque_id === 'obra' || mov.tipo_movimento === TipoMovimento.ENTRADA_OBRA
-      ).reduce((acc, curr) => acc + curr.litros, 0);
-
-      setTanks([
-        { id: 'britagem', nome: 'Tanque Britagem', capacidade_litros: CAPACITY_BRITAGEM, saldo_atual: balanceBritagem },
-        { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: balanceObra }
-      ]);
+      // Calculate balanced tanks dynamically
+      setTanks(prevTanks => prevTanks.map(tank => {
+        const balance = ms
+          .filter(mov => mov.tanque_id === tank.id)
+          .reduce((acc, curr) => acc + curr.litros, 0);
+        return { ...tank, saldo_atual: balance };
+      }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'movements');
     });
@@ -650,7 +647,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
 }
 
 function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
-  const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' as 'britagem' | 'obra' });
+  const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' });
   const [totalValue, setTotalValue] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<string>('');
   const [editingMovement, setEditingMovement] = useState<any>(null);
@@ -716,7 +713,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
         id,
         tipo_movimento: form.tipo,
         veiculo_id: form.tipo === TipoMovimento.CONSUMO ? form.veiculoId : null,
-        tanque_id: form.tipo === TipoMovimento.CONSUMO ? form.tanqueId : (form.tipo === TipoMovimento.ENTRADA_BRITAGEM ? 'britagem' : 'obra'),
+        tanque_id: form.tipo === TipoMovimento.CONSUMO ? form.tanqueId : form.tanqueId, // Always use form.tanqueId
         litros: form.tipo === TipoMovimento.CONSUMO ? -Math.abs(parseFloat(form.litros)) : Math.abs(parseFloat(form.litros)),
         km_informado: form.tipo === TipoMovimento.CONSUMO ? parseFloat(form.leitura) : null,
         horimetro_informado: form.tipo === TipoMovimento.CONSUMO ? parseFloat(form.leitura) : null,
@@ -759,17 +756,29 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tipo de Operação</label>
               <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as any})}>
                 <option value={TipoMovimento.CONSUMO}>Saída (Abastecimento)</option>
-                <option value={TipoMovimento.ENTRADA_BRITAGEM}>Entrada Diesel - Britagem</option>
-                <option value={TipoMovimento.ENTRADA_OBRA}>Entrada Diesel - Obra</option>
+                <option value={TipoMovimento.ENTRADA}>Entrada de Diesel (NF)</option>
               </select>
             </div>
+
+            {form.tipo === TipoMovimento.ENTRADA && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Destino</label>
+                <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => setForm({...form, tanqueId: e.target.value})}>
+                  <option value="britagem">Tanque Britagem</option>
+                  <option value="wagner">Tanque Wagner</option>
+                  <option value="marcus">Tanque Marcus</option>
+                  <option value="paulo">Tanque Paulo</option>
+                  <option value="obra">Tanque Obra</option>
+                </select>
+              </div>
+            )}
             
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Quantidade (Litros)</label>
               <input placeholder="0,00" required type="number" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" value={form.litros} onChange={e => setForm({...form, litros: e.target.value})} />
             </div>
 
-            {(form.tipo === TipoMovimento.ENTRADA_BRITAGEM || form.tipo === TipoMovimento.ENTRADA_OBRA) && (
+            {(form.tipo === TipoMovimento.ENTRADA || form.tipo === TipoMovimento.ENTRADA_BRITAGEM || form.tipo === TipoMovimento.ENTRADA_OBRA) && (
               <div className="p-4 bg-blue-50 rounded-2xl space-y-3">
                 <div className="text-[9px] font-black uppercase text-blue-400">Calculadora de Preço</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -791,6 +800,9 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
                   <select required className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => setForm({...form, tanqueId: e.target.value as any})}>
                     <option value="britagem">Tanque Britagem</option>
+                    <option value="wagner">Tanque Wagner</option>
+                    <option value="marcus">Tanque Marcus</option>
+                    <option value="paulo">Tanque Paulo</option>
                     <option value="obra">Tanque Obra</option>
                   </select>
                 </div>
@@ -892,6 +904,16 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                 }} />
               </div>
               <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
+                <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
+                  <option value="britagem">Tanque Britagem</option>
+                  <option value="wagner">Tanque Wagner</option>
+                  <option value="marcus">Tanque Marcus</option>
+                  <option value="paulo">Tanque Paulo</option>
+                  <option value="obra">Tanque Obra</option>
+                </select>
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora</label>
                 <input type="datetime-local" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.data_hora.substring(0, 16)} onChange={e => setEditingMovement({...editingMovement, data_hora: e.target.value})} />
               </div>
@@ -941,6 +963,7 @@ function ReportsView({ movements, vehicles }: any) {
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all');
+  const [selectedTankId, setSelectedTankId] = useState<string>('all');
 
   const filteredMovements = useMemo(() => {
     let filtered = movements.filter((m: any) => {
@@ -952,9 +975,13 @@ function ReportsView({ movements, vehicles }: any) {
       filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
     }
 
+    if (selectedTankId !== 'all') {
+      filtered = filtered.filter((m: any) => m.tanque_id === selectedTankId);
+    }
+
     // Sort descending by date (Point 1)
     return [...filtered].sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
-  }, [movements, startDate, endDate, selectedVehicleId]);
+  }, [movements, startDate, endDate, selectedVehicleId, selectedTankId]);
 
   const calculateMetric = (m: any, prevM: any, vehicle: any) => {
     if (!prevM || !m || !vehicle) return null;
@@ -1016,7 +1043,7 @@ function ReportsView({ movements, vehicles }: any) {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
            <div className="space-y-1">
              <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Data Inicial</label>
              <div className="relative">
@@ -1054,6 +1081,24 @@ function ReportsView({ movements, vehicles }: any) {
                  {vehicles.map((v: any) => (
                    <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
                  ))}
+               </select>
+             </div>
+           </div>
+           <div className="space-y-1">
+             <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Filtrar Tanque</label>
+             <div className="relative">
+               <Box className="absolute left-4 top-3.5 text-slate-400" size={18} />
+               <select 
+                className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-4 py-3 font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none" 
+                value={selectedTankId} 
+                onChange={e => setSelectedTankId(e.target.value)}
+               >
+                 <option value="all">Todos os Tanques</option>
+                 <option value="britagem">Tanque Britagem</option>
+                 <option value="wagner">Tanque Wagner</option>
+                 <option value="marcus">Tanque Marcus</option>
+                 <option value="paulo">Tanque Paulo</option>
+                 <option value="obra">Tanque Obra</option>
                </select>
              </div>
            </div>
