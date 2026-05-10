@@ -810,7 +810,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo</label>
                   <select required className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.veiculoId} onChange={e => setForm({...form, veiculoId: e.target.value})}>
                     <option value="">Selecione Ativo</option>
-                    {vehicles.map((v:any) => <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>)}
+                    {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -847,7 +847,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                 onChange={e => setSelectedVehicleId(e.target.value)}
               >
                 <option value="all">Todos os Ativos</option>
-                {vehicles.map((v: any) => (
+                {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v: any) => (
                   <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
                 ))}
               </select>
@@ -1078,7 +1078,7 @@ function ReportsView({ movements, vehicles }: any) {
                 onChange={e => setSelectedVehicleId(e.target.value)}
                >
                  <option value="all">Todos os Ativos</option>
-                 {vehicles.map((v: any) => (
+                 {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v: any) => (
                    <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
                  ))}
                </select>
