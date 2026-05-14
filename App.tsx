@@ -102,6 +102,7 @@ export default function App() {
     { id: 'wagner', nome: 'Tanque Wagner', capacidade_litros: 5000, saldo_atual: 0 },
     { id: 'marcus', nome: 'Tanque Marcus', capacidade_litros: 5000, saldo_atual: 0 },
     { id: 'paulo', nome: 'Tanque Paulo', capacidade_litros: 5000, saldo_atual: 0 },
+    { id: 'matheus', nome: 'Tanque Matheus', capacidade_litros: 5000, saldo_atual: 0 },
     { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 }
   ]);
 
@@ -251,7 +252,7 @@ export default function App() {
           >
             {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} />}
             {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} logAction={logAction} />}
-            {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} users={users} currentUser={currentUser} logAction={logAction} />}
+            {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} tanks={tanks} users={users} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
             {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} />}
             {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} logAction={logAction} />}
@@ -450,17 +451,17 @@ function DashboardView({ tanks, movements, vehicles }: any) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {tanks.map((t: any) => {
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
+        {tanks.sort((a, b) => a.nome.localeCompare(b.nome)).map((t: any) => {
           const percent = Math.min(100, Math.max(0, (t.saldo_atual / t.capacidade_litros) * 100));
           return (
-            <div key={t.id} className="md:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 md:p-8 flex items-center justify-between shadow-sm">
+            <div key={t.id} className="md:col-span-3 lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 md:p-8 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
               <div className="space-y-1">
                 <h3 className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">{t.nome}</h3>
-                <div className="text-3xl md:text-5xl font-black text-slate-900 mb-2">{Math.max(0, t.saldo_atual).toLocaleString()} <span className="text-lg md:text-xl text-slate-300">L</span></div>
+                <div className="text-2xl md:text-4xl font-black text-slate-900 mb-2">{Math.max(0, t.saldo_atual).toLocaleString()} <span className="text-sm md:text-base text-slate-300">L</span></div>
                 <div className="text-[10px] font-black text-blue-600 uppercase">Capacidade: {t.capacidade_litros.toLocaleString()} L</div>
               </div>
-              <div className="w-16 h-16 md:w-20 md:h-20 relative">
+              <div className="w-14 h-14 md:w-16 md:h-16 relative">
                 <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
                   <circle cx="18" cy="18" r="16" fill="none" className="text-slate-100" strokeWidth="4" stroke="currentColor" />
                   <circle cx="18" cy="18" r="16" fill="none" className={percent < 15 ? 'text-red-500' : 'text-blue-600'} strokeWidth="4" strokeDasharray={`${percent}, 100`} strokeLinecap="round" stroke="currentColor" />
@@ -469,18 +470,22 @@ function DashboardView({ tanks, movements, vehicles }: any) {
             </div>
           );
         })}
-        <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-sm flex flex-row md:flex-col items-center md:items-start justify-between">
-          <Truck className="text-blue-600" size={32} />
-          <div className="text-right md:text-left">
-            <div className="text-[10px] font-black text-slate-400 uppercase">Frota Ativa</div>
-            <div className="text-2xl md:text-3xl font-black">{vehicles.length} Ativos</div>
+        <div className="md:col-span-3 lg:col-span-3 bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-sm flex flex-row md:flex-row items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Truck className="text-blue-600" size={32} />
+            <div>
+              <div className="text-[10px] font-black text-slate-400 uppercase">Frota Ativa</div>
+              <div className="text-2xl font-black">{vehicles.length} Ativos</div>
+            </div>
           </div>
         </div>
-        <div className="bg-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl flex flex-row md:flex-col items-center md:items-start justify-between">
-          <Droplets className="text-blue-500" size={32} />
-          <div className="text-right md:text-left">
-            <div className="text-[10px] font-black opacity-60 uppercase">Saldo Total</div>
-            <div className="text-2xl md:text-3xl font-black">{tanks.reduce((acc: any, t: any) => acc + t.saldo_atual, 0).toLocaleString()} L</div>
+        <div className="md:col-span-3 lg:col-span-3 bg-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl flex flex-row md:flex-row items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Droplets className="text-blue-500" size={32} />
+            <div>
+              <div className="text-[10px] font-black opacity-60 uppercase">Saldo Total</div>
+              <div className="text-2xl font-black">{tanks.reduce((acc: any, t: any) => acc + t.saldo_atual, 0).toLocaleString()} L</div>
+            </div>
           </div>
         </div>
       </div>
@@ -646,7 +651,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
   );
 }
 
-function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
+function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: any) {
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' });
   const [totalValue, setTotalValue] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<string>('');
@@ -683,11 +688,14 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
   }, [movements, startDate, endDate, selectedVehicleId]);
 
   const deleteMovement = async (m: any) => {
-    if (confirm('Excluir este lançamento?')) {
+    if (confirm('Deseja realmente excluir este lançamento? Esta ação não pode ser desfeita.')) {
       try {
         await deleteDoc(doc(db, 'movements', m.id));
         await logAction('MOVEMENT_DELETE', m, null);
-      } catch (e) {
+        // Feedback success is implicit as Firestore will sync and UI will update
+      } catch (e: any) {
+        console.error("Delete error:", e);
+        alert(`Erro ao excluir: ${e.message || 'Verifique suas permissões'}`);
         handleFirestoreError(e, OperationType.DELETE, `movements/${m.id}`);
       }
     }
@@ -726,6 +734,34 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
       };
 
       await setDoc(doc(db, 'movements', id), mov);
+
+      // Automatic transfer logic (Point 2)
+      if (form.tipo === TipoMovimento.CONSUMO && form.tanqueId === 'britagem' && form.veiculoId) {
+        const v = vehicles.find((vi:any) => vi.id === form.veiculoId);
+        if (v) {
+          const placa = v.placa_ou_prefixo.toUpperCase();
+          let targetTankId = '';
+          
+          if (placa.includes('APOIO 1') || placa.includes('PAULO')) targetTankId = 'paulo';
+          else if (placa.includes('APOIO 2') || placa.includes('MARCUS')) targetTankId = 'marcus';
+          else if (placa.includes('APOIO 3') || placa.includes('WAGNER')) targetTankId = 'wagner';
+          else if (placa.includes('APOIO 4') || placa.includes('MATHEUS')) targetTankId = 'matheus';
+
+          if (targetTankId) {
+            const transferId = Math.random().toString(36).substr(2, 9);
+            const transferMov = {
+              ...mov,
+              id: transferId,
+              tanque_id: targetTankId,
+              tipo_movimento: TipoMovimento.ENTRADA,
+              litros: Math.abs(parseFloat(form.litros)),
+              veiculo_id: null,
+              observacoes: `Transferência automática via ${v.placa_ou_prefixo}`
+            };
+            await setDoc(doc(db, 'movements', transferId), transferMov);
+          }
+        }
+      }
 
       // Update vehicle reading
       if (form.tipo === TipoMovimento.CONSUMO && form.veiculoId) {
@@ -768,6 +804,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                   <option value="wagner">Tanque Wagner</option>
                   <option value="marcus">Tanque Marcus</option>
                   <option value="paulo">Tanque Paulo</option>
+                  <option value="matheus">Tanque Matheus</option>
                   <option value="obra">Tanque Obra</option>
                 </select>
               </div>
@@ -803,6 +840,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                     <option value="wagner">Tanque Wagner</option>
                     <option value="marcus">Tanque Marcus</option>
                     <option value="paulo">Tanque Paulo</option>
+                    <option value="matheus">Tanque Matheus</option>
                     <option value="obra">Tanque Obra</option>
                   </select>
                 </div>
@@ -862,7 +900,14 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                 <div className="font-bold text-slate-900 uppercase">
                   {m.tipo_movimento === TipoMovimento.CONSUMO ? `Saída: ${vehicles.find((v:any) => v.id === m.veiculo_id)?.placa_ou_prefixo || '?'}` : 'Entrada de Combustível'}
                 </div>
-                <div className="text-[9px] font-black text-blue-500 uppercase">{m.tipo_movimento} | Tanque: {m.tanque_id}</div>
+                <div className="text-[9px] font-black text-blue-500 uppercase">
+                  {m.tipo_movimento} | Tanque: {tanks.find((t:any) => t.id === m.tanque_id)?.nome || m.tanque_id}
+                </div>
+                {m.observacoes && (
+                  <div className="text-[9px] font-bold text-amber-500 uppercase mt-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 inline-block">
+                    {m.observacoes}
+                  </div>
+                )}
              </div>
              <div className={`text-xl font-black ${m.litros > 0 ? 'text-green-600' : 'text-red-500'}`}>
                 {m.litros > 0 ? '+' : ''}{m.litros.toLocaleString()} L
@@ -910,6 +955,7 @@ function MovementsView({ movements, vehicles, currentUser, logAction }: any) {
                   <option value="wagner">Tanque Wagner</option>
                   <option value="marcus">Tanque Marcus</option>
                   <option value="paulo">Tanque Paulo</option>
+                  <option value="matheus">Tanque Matheus</option>
                   <option value="obra">Tanque Obra</option>
                 </select>
               </div>
@@ -1098,6 +1144,7 @@ function ReportsView({ movements, vehicles }: any) {
                  <option value="wagner">Tanque Wagner</option>
                  <option value="marcus">Tanque Marcus</option>
                  <option value="paulo">Tanque Paulo</option>
+                 <option value="matheus">Tanque Matheus</option>
                  <option value="obra">Tanque Obra</option>
                </select>
              </div>
