@@ -17,23 +17,12 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, orderBy, onSnapshot, collection, query, getDocFromServer } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, orderBy, onSnapshot, collection, query } from 'firebase/firestore';
 import { auth, db } from './src/lib/firebase';
 import { 
   TipoVeiculo, MedidaUso, TipoMovimento, VeiculoEquipamento, 
   MovimentoTanque, Tanque, AppUser 
 } from './types';
-
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
-  }
-}
-testConnection();
 
 enum OperationType {
   CREATE = 'create',
@@ -948,6 +937,59 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   else setEditingMovement({...editingMovement, horimetro_informado: val});
                 }} />
               </div>
+              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                currentUser?.role === 'admin' ? (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo (Admin)</label>
+                    <select 
+                      required 
+                      className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.veiculo_id || ''} 
+                      onChange={e => setEditingMovement({...editingMovement, veiculo_id: e.target.value})}
+                    >
+                      <option value="">Selecione Ativo</option>
+                      {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => (
+                        <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo</label>
+                    <input 
+                      type="text" 
+                      readOnly 
+                      disabled
+                      className="w-full bg-slate-100 border text-slate-500 rounded-2xl px-5 py-3.5 font-bold" 
+                      value={vehicles.find((v: any) => v.id === editingMovement.veiculo_id)?.placa_ou_prefixo || 'Nenhum'} 
+                    />
+                  </div>
+                )
+              )}
+              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                currentUser?.role === 'admin' ? (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor (Admin)</label>
+                    <input 
+                      type="text"
+                      className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.motorista || ''} 
+                      onChange={e => setEditingMovement({...editingMovement, motorista: e.target.value})} 
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor</label>
+                    <input 
+                      type="text" 
+                      readOnly 
+                      disabled
+                      className="w-full bg-slate-100 border text-slate-500 rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.motorista || ''} 
+                    />
+                  </div>
+                )
+              )}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
                 <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
