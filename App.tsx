@@ -242,7 +242,7 @@ export default function App() {
             {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} />}
             {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} tanks={tanks} users={users} currentUser={currentUser} logAction={logAction} />}
-            {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} users={users} />}
+            {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} tanks={tanks} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} />}
             {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} logAction={logAction} />}
             {activeTab === 'audit' && currentUser.role === 'admin' && <AuditView logs={logs} logAction={logAction} />}
@@ -1043,7 +1043,23 @@ function TankView({ tanks }: any) {
   );
 }
 
-function ReportsView({ movements, vehicles }: any) {
+function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any) {
+  const [editingMovement, setEditingMovement] = useState<any>(null);
+
+  const saveEditedMovement = async (e: any) => {
+    e.preventDefault();
+    try {
+      const oldM = movements.find((m: any) => m.id === editingMovement.id);
+      await setDoc(doc(db, 'movements', editingMovement.id), editingMovement);
+      if (logAction) {
+        await logAction('MOVEMENT_EDIT', oldM, editingMovement);
+      }
+      setEditingMovement(null);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `movements/${editingMovement.id}`);
+    }
+  };
+
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -1256,6 +1272,9 @@ function ReportsView({ movements, vehicles }: any) {
                     <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Leitura</th>
                     <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Litros</th>
                     <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Rendimento</th>
+                    {currentUser?.role === 'admin' && (
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Ações</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -1306,12 +1325,22 @@ function ReportsView({ movements, vehicles }: any) {
                             <span className="text-[10px] font-bold text-slate-200 uppercase">N/A</span>
                           )}
                         </td>
+                        {currentUser?.role === 'admin' && (
+                          <td className="py-4 text-right">
+                            <button
+                              onClick={() => setEditingMovement(m)}
+                              className="bg-blue-50 text-blue-600 hover:bg-blue-100 p-2 rounded-xl transition-all inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest shadow-sm"
+                            >
+                              <Pencil size={12} /> Editar
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
                   {filteredMovements.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-20 text-center text-[10px] font-black uppercase text-slate-300 tracking-widest">Nenhum registro encontrado no período</td>
+                      <td colSpan={currentUser?.role === 'admin' ? 6 : 5} className="py-20 text-center text-[10px] font-black uppercase text-slate-300 tracking-widest">Nenhum registro encontrado no período</td>
                     </tr>
                   )}
                 </tbody>
@@ -1320,6 +1349,72 @@ function ReportsView({ movements, vehicles }: any) {
           </div>
         )}
       </div>
+
+      {editingMovement && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl">
+            <h3 className="text-xl font-black mb-6">Editar Lançamento</h3>
+            <form onSubmit={saveEditedMovement} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Litros</label>
+                <input required type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={Math.abs(editingMovement.litros)} onChange={e => setEditingMovement({...editingMovement, litros: editingMovement.litros < 0 ? -Math.abs(parseFloat(e.target.value)) : Math.abs(parseFloat(e.target.value))})} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
+                <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
+                  else setEditingMovement({...editingMovement, horimetro_informado: val});
+                }} />
+              </div>
+              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo (Admin)</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                    value={editingMovement.veiculo_id || ''} 
+                    onChange={e => setEditingMovement({...editingMovement, veiculo_id: e.target.value})}
+                  >
+                    <option value="">Selecione Ativo</option>
+                    {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => (
+                      <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor (Admin)</label>
+                  <input 
+                    type="text"
+                    className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                    value={editingMovement.motorista || ''} 
+                    onChange={e => setEditingMovement({...editingMovement, motorista: e.target.value})} 
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
+                <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
+                  <option value="britagem">Tanque Britagem</option>
+                  <option value="wagner">Tanque Wagner</option>
+                  <option value="marcus">Tanque Marcus</option>
+                  <option value="paulo">Tanque Paulo</option>
+                  <option value="matheus">Tanque Matheus</option>
+                  <option value="obra">Tanque Obra</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora</label>
+                <input type="datetime-local" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.data_hora.substring(0, 16)} onChange={e => setEditingMovement({...editingMovement, data_hora: e.target.value})} />
+              </div>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Salvar Alterações</button>
+              <button type="button" onClick={() => setEditingMovement(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
