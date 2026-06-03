@@ -52,6 +52,7 @@ export interface MovimentoTanque {
   horimetro_informado?: number;
   valor_total?: number; // Valor da NF
   valor_unitario?: number; // Valor calculado do litro
+  valor_frete?: number; // Valor do frete
   observacoes: string;
   eficiencia_calculada?: number;
 }

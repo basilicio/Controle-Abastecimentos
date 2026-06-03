@@ -644,16 +644,39 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' });
   const [totalValue, setTotalValue] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<string>('');
+  const [freightValue, setFreightValue] = useState<string>('');
   const [editingMovement, setEditingMovement] = useState<any>(null);
 
-  useEffect(() => {
-    if (totalValue && form.litros && parseFloat(form.litros) > 0) {
-      const calc = parseFloat(totalValue) / parseFloat(form.litros);
-      setUnitPrice(calc.toFixed(3));
-    } else {
-      setUnitPrice('');
+  const handleUnitPriceInput = (val: string) => {
+    setUnitPrice(val);
+    const lits = parseFloat(form.litros) || 0;
+    const unitPriceNum = parseFloat(val) || 0;
+    const freightNum = parseFloat(freightValue) || 0;
+    if (lits > 0 && unitPriceNum > 0) {
+      setTotalValue((unitPriceNum * lits + freightNum).toFixed(2));
     }
-  }, [totalValue, form.litros]);
+  };
+
+  const handleFreightInput = (val: string) => {
+    setFreightValue(val);
+    const lits = parseFloat(form.litros) || 0;
+    const unitPriceNum = parseFloat(unitPrice) || 0;
+    const freightNum = parseFloat(val) || 0;
+    if (lits > 0 && unitPriceNum > 0) {
+      setTotalValue((unitPriceNum * lits + freightNum).toFixed(2));
+    }
+  };
+
+  const handleTotalNFInput = (val: string) => {
+    setTotalValue(val);
+    const lits = parseFloat(form.litros) || 0;
+    const totalNum = parseFloat(val) || 0;
+    const freightNum = parseFloat(freightValue) || 0;
+    if (lits > 0 && totalNum > 0) {
+      const dieselPart = totalNum - freightNum;
+      setUnitPrice(dieselPart > 0 ? (dieselPart / lits).toFixed(3) : '0.000');
+    }
+  };
   
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -719,6 +742,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         usuario_id: currentUser.id,
         valor_total: totalValue ? parseFloat(totalValue) : null,
         valor_unitario: unitPrice ? parseFloat(unitPrice) : null,
+        valor_frete: freightValue ? parseFloat(freightValue) : null,
         observacoes: ''
       };
 
@@ -766,6 +790,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
       setForm({ ...form, litros: '', leitura: '' });
       setTotalValue('');
       setUnitPrice('');
+      setFreightValue('');
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'movements');
     }
@@ -801,21 +826,70 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
             
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Quantidade (Litros)</label>
-              <input placeholder="0,00" required type="number" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" value={form.litros} onChange={e => setForm({...form, litros: e.target.value})} />
+              <input 
+                placeholder="0,00" 
+                required 
+                type="number" 
+                step="0.01" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" 
+                value={form.litros} 
+                onChange={e => {
+                  const val = e.target.value;
+                  setForm({...form, litros: val});
+                  const lits = parseFloat(val) || 0;
+                  if (lits > 0) {
+                    if (unitPrice) {
+                      const unitPriceNum = parseFloat(unitPrice) || 0;
+                      const freightNum = parseFloat(freightValue) || 0;
+                      setTotalValue((unitPriceNum * lits + freightNum).toFixed(2));
+                    } else if (totalValue) {
+                      const totalNum = parseFloat(totalValue) || 0;
+                      const freightNum = parseFloat(freightValue) || 0;
+                      const dieselPart = totalNum - freightNum;
+                      setUnitPrice(dieselPart > 0 ? (dieselPart / lits).toFixed(3) : '0.000');
+                    }
+                  }
+                }} 
+              />
             </div>
 
             {(form.tipo === TipoMovimento.ENTRADA || form.tipo === TipoMovimento.ENTRADA_BRITAGEM || form.tipo === TipoMovimento.ENTRADA_OBRA) && (
-              <div className="p-4 bg-blue-50 rounded-2xl space-y-3">
-                <div className="text-[9px] font-black uppercase text-blue-400">Calculadora de Preço</div>
+              <div className="p-5 bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border border-blue-100 rounded-2xl space-y-4 shadow-inner">
+                <div className="text-[10px] font-black uppercase text-blue-500 tracking-wider">Custo do Abastecimento</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                     <label className="text-[8px] font-black uppercase text-slate-400">Valor Total NF</label>
-                     <input type="number" step="0.01" placeholder="R$ 0,00" className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" value={totalValue} onChange={e => setTotalValue(e.target.value)} />
+                     <label className="text-[8px] font-black uppercase text-slate-400">Preço Unitário (R$/L)</label>
+                     <input 
+                       type="number" 
+                       step="0.001" 
+                       placeholder="R$ 0,000" 
+                       className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                       value={unitPrice} 
+                       onChange={e => handleUnitPriceInput(e.target.value)} 
+                     />
                   </div>
                   <div className="space-y-1">
-                     <label className="text-[8px] font-black uppercase text-slate-400">Preço Unitário</label>
-                     <input type="text" readOnly placeholder="R$ 0,000" className="w-full bg-slate-50 border border-blue-100 rounded-xl px-3 py-2 text-xs font-black text-blue-600" value={unitPrice ? `R$ ${unitPrice}` : ''} />
+                     <label className="text-[8px] font-black uppercase text-slate-400">Valor do Frete (R$)</label>
+                     <input 
+                       type="number" 
+                       step="0.01" 
+                       placeholder="R$ 0,00" 
+                       className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                       value={freightValue} 
+                       onChange={e => handleFreightInput(e.target.value)} 
+                     />
                   </div>
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[8px] font-black uppercase text-slate-400">Valor Total NF (R$)</label>
+                   <input 
+                     type="number" 
+                     step="0.01" 
+                     placeholder="R$ 0,00" 
+                     className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                     value={totalValue} 
+                     onChange={e => handleTotalNFInput(e.target.value)} 
+                   />
                 </div>
               </div>
             )}
@@ -927,71 +1001,160 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
             <form onSubmit={saveEditedMovement} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Litros</label>
-                <input required type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={Math.abs(editingMovement.litros)} onChange={e => setEditingMovement({...editingMovement, litros: editingMovement.litros < 0 ? -Math.abs(parseFloat(e.target.value)) : Math.abs(parseFloat(e.target.value))})} />
+                <input 
+                  required 
+                  type="number" 
+                  step="0.01" 
+                  className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                  value={Math.abs(editingMovement.litros)} 
+                  onChange={e => {
+                    const lits = Math.abs(parseFloat(e.target.value)) || 0;
+                    if (editingMovement.tipo_movimento === TipoMovimento.CONSUMO) {
+                      setEditingMovement({...editingMovement, litros: -lits});
+                    } else {
+                      const fVal = parseFloat(editingMovement.valor_frete) || 0;
+                      const uVal = parseFloat(editingMovement.valor_unitario) || 0;
+                      setEditingMovement({
+                        ...editingMovement,
+                        litros: lits,
+                        valor_total: parseFloat((uVal * lits + fVal).toFixed(2))
+                      });
+                    }
+                  }} 
+                />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
-                <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
-                  const val = parseFloat(e.target.value);
-                  if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
-                  else setEditingMovement({...editingMovement, horimetro_informado: val});
-                }} />
-              </div>
-              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
-                currentUser?.role === 'admin' ? (
+
+              {(editingMovement.tipo_movimento === TipoMovimento.ENTRADA || 
+                editingMovement.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM || 
+                editingMovement.tipo_movimento === TipoMovimento.ENTRADA_OBRA) ? (
+                <>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo (Admin)</label>
-                    <select 
-                      required 
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Preço Unitário (R$/L)</label>
+                    <input 
+                      type="number" 
+                      step="0.001" 
                       className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
-                      value={editingMovement.veiculo_id || ''} 
-                      onChange={e => setEditingMovement({...editingMovement, veiculo_id: e.target.value})}
-                    >
-                      <option value="">Selecione Ativo</option>
-                      {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => (
-                        <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo</label>
-                    <input 
-                      type="text" 
-                      readOnly 
-                      disabled
-                      className="w-full bg-slate-100 border text-slate-500 rounded-2xl px-5 py-3.5 font-bold" 
-                      value={vehicles.find((v: any) => v.id === editingMovement.veiculo_id)?.placa_ou_prefixo || 'Nenhum'} 
+                      value={editingMovement.valor_unitario || ''} 
+                      onChange={e => {
+                        const unit = parseFloat(e.target.value) || 0;
+                        const lits = Math.abs(editingMovement.litros) || 0;
+                        const fr = parseFloat(editingMovement.valor_frete) || 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          valor_unitario: unit,
+                          valor_total: parseFloat((unit * lits + fr).toFixed(2))
+                        });
+                      }} 
                     />
                   </div>
-                )
-              )}
-              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
-                currentUser?.role === 'admin' ? (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor (Admin)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Valor do Frete (R$)</label>
                     <input 
-                      type="text"
+                      type="number" 
+                      step="0.01" 
                       className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
-                      value={editingMovement.motorista || ''} 
-                      onChange={e => setEditingMovement({...editingMovement, motorista: e.target.value})} 
+                      value={editingMovement.valor_frete || ''} 
+                      onChange={e => {
+                        const fr = parseFloat(e.target.value) || 0;
+                        const unit = parseFloat(editingMovement.valor_unitario) || 0;
+                        const lits = Math.abs(editingMovement.litros) || 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          valor_frete: fr,
+                          valor_total: parseFloat((unit * lits + fr).toFixed(2))
+                        });
+                      }} 
                     />
                   </div>
-                ) : (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Valor Total NF (R$)</label>
                     <input 
-                      type="text" 
-                      readOnly 
-                      disabled
-                      className="w-full bg-slate-100 border text-slate-500 rounded-2xl px-5 py-3.5 font-bold" 
-                      value={editingMovement.motorista || ''} 
+                      type="number" 
+                      step="0.01" 
+                      className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.valor_total || ''} 
+                      onChange={e => {
+                        const tot = parseFloat(e.target.value) || 0;
+                        const fr = parseFloat(editingMovement.valor_frete) || 0;
+                        const lits = Math.abs(editingMovement.litros) || 0;
+                        const unit = lits > 0 ? parseFloat(((tot - fr) / lits).toFixed(3)) : 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          valor_total: tot,
+                          valor_unitario: unit > 0 ? unit : 0
+                        });
+                      }} 
                     />
                   </div>
-                )
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
+                    <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
+                      const val = parseFloat(e.target.value);
+                      if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
+                      else setEditingMovement({...editingMovement, horimetro_informado: val});
+                    }} />
+                  </div>
+                  {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                    currentUser?.role === 'admin' ? (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo (Admin)</label>
+                        <select 
+                          required 
+                          className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                          value={editingMovement.veiculo_id || ''} 
+                          onChange={e => setEditingMovement({...editingMovement, veiculo_id: e.target.value})}
+                        >
+                          <option value="">Selecione Ativo</option>
+                          {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => (
+                            <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo</label>
+                        <input 
+                          type="text" 
+                          readOnly 
+                          disabled
+                          className="w-full bg-slate-100 border text-slate-500 rounded-2xl px-5 py-3.5 font-bold" 
+                          value={vehicles.find((v: any) => v.id === editingMovement.veiculo_id)?.placa_ou_prefixo || 'Nenhum'} 
+                        />
+                      </div>
+                    )
+                  )}
+                  {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                    currentUser?.role === 'admin' ? (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor (Admin)</label>
+                        <input 
+                          type="text"
+                          className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                          value={editingMovement.motorista || ''} 
+                          onChange={e => setEditingMovement({...editingMovement, motorista: e.target.value})} 
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor</label>
+                        <input 
+                          type="text" 
+                          readOnly 
+                          disabled
+                          className="w-full bg-slate-100 border text-slate-500 rounded-2xl px-5 py-3.5 font-bold" 
+                          value={editingMovement.motorista || ''} 
+                        />
+                      </div>
+                    )
+                  )}
+                </>
               )}
+
               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Destino / Origem</label>
                 <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
                   <option value="britagem">Tanque Britagem</option>
                   <option value="wagner">Tanque Wagner</option>
@@ -1001,11 +1164,22 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   <option value="obra">Tanque Obra</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Observações</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                  value={editingMovement.observacoes || ''} 
+                  onChange={e => setEditingMovement({...editingMovement, observacoes: e.target.value})} 
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora</label>
                 <input type="datetime-local" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.data_hora.substring(0, 16)} onChange={e => setEditingMovement({...editingMovement, data_hora: e.target.value})} />
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Salvar Alterações</button>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs animate-pulse">Salvar Alterações</button>
               <button type="button" onClick={() => setEditingMovement(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
             </form>
           </div>
@@ -1045,6 +1219,7 @@ function TankView({ tanks }: any) {
 
 function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any) {
   const [editingMovement, setEditingMovement] = useState<any>(null);
+  const [reportTab, setReportTab] = useState<'consumption' | 'entries'>('consumption');
 
   const saveEditedMovement = async (e: any) => {
     e.preventDefault();
@@ -1075,17 +1250,26 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
       return date >= startDate && date <= endDate;
     });
 
-    if (selectedVehicleId !== 'all') {
-      filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
-    }
-
     if (selectedTankId !== 'all') {
       filtered = filtered.filter((m: any) => m.tanque_id === selectedTankId);
     }
 
-    // Sort descending by date (Point 1)
+    if (reportTab === 'consumption') {
+      filtered = filtered.filter((m: any) => m.tipo_movimento === TipoMovimento.CONSUMO);
+      if (selectedVehicleId !== 'all') {
+        filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
+      }
+    } else {
+      filtered = filtered.filter((m: any) => 
+        m.tipo_movimento === TipoMovimento.ENTRADA || 
+        m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM || 
+        m.tipo_movimento === TipoMovimento.ENTRADA_OBRA
+      );
+    }
+
+    // Sort descending by date
     return [...filtered].sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
-  }, [movements, startDate, endDate, selectedVehicleId, selectedTankId]);
+  }, [movements, startDate, endDate, selectedVehicleId, selectedTankId, reportTab]);
 
   const calculateMetric = (m: any, prevM: any, vehicle: any) => {
     if (!prevM || !m || !vehicle) return null;
@@ -1103,7 +1287,6 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
       if (m.horimetro_informado && prevM.horimetro_informado) {
         const diff = m.horimetro_informado - prevM.horimetro_informado;
         if (diff <= 0) return null;
-        // User asked for Litros/Hora
         return (liters / diff).toFixed(2) + ' L/H';
       }
     }
@@ -1111,37 +1294,88 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
   };
 
   const exportToExcel = () => {
-    const data = filteredMovements.map((m: any) => {
-      const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
-      return {
-        'Data/Hora': new Date(m.data_hora).toLocaleString(),
-        'Tipo': m.tipo_movimento,
-        'Tanque': m.tanque_id,
-        'Ativo': vehicle ? vehicle.placa_ou_prefixo : 'N/A',
-        'Modelo': vehicle ? vehicle.modelo : 'N/A',
-        'Litros': m.litros,
-        'Leitura (KM/H)': m.km_informado || m.horimetro_informado || '',
-        'Motorista': m.motorista || ''
-      };
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimentações');
+
+    const saidasData = movements
+      .filter((m: any) => m.tipo_movimento === TipoMovimento.CONSUMO)
+      .filter((m: any) => {
+        const date = m.data_hora.split('T')[0];
+        return date >= startDate && date <= endDate;
+      })
+      .map((m: any) => {
+        const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
+        return {
+          'Data/Hora': new Date(m.data_hora).toLocaleString(),
+          'Tipo': m.tipo_movimento,
+          'Tanque Origem': m.tanque_id,
+          'Ativo (Placa/Fixo)': vehicle ? vehicle.placa_ou_prefixo : 'N/A',
+          'Modelo': vehicle ? vehicle.modelo : 'N/A',
+          'Litros': Math.abs(m.litros),
+          'Leitura (KM/H)': m.km_informado || m.horimetro_informado || '',
+          'Motorista': m.motorista || ''
+        };
+      });
+
+    const entradasData = movements
+      .filter((m: any) => [TipoMovimento.ENTRADA, TipoMovimento.ENTRADA_BRITAGEM, TipoMovimento.ENTRADA_OBRA].includes(m.tipo_movimento))
+      .filter((m: any) => {
+        const date = m.data_hora.split('T')[0];
+        return date >= startDate && date <= endDate;
+      })
+      .map((m: any) => {
+        return {
+          'Data/Hora': m.data_hora ? new Date(m.data_hora).toLocaleString() : '',
+          'Tipo': m.tipo_movimento,
+          'Tanque Destino': m.tanque_id,
+          'Litros Recebidos': Math.abs(m.litros),
+          'Preço Unitário (R$/L)': m.valor_unitario || 0,
+          'Valor do Frete (R$)': m.valor_frete || 0,
+          'Valor Total NF (R$)': m.valor_total || 0,
+          'Observações': m.observacoes || ''
+        };
+      });
+
+    const worksheetSaidas = XLSX.utils.json_to_sheet(saidasData);
+    const worksheetEntradas = XLSX.utils.json_to_sheet(entradasData);
+
+    XLSX.utils.book_append_sheet(workbook, worksheetSaidas, 'Consumo (Saídas)');
+    XLSX.utils.book_append_sheet(workbook, worksheetEntradas, 'Entradas de Combustível');
+
     XLSX.writeFile(workbook, `Relatorio_FuelTrack_${startDate}_a_${endDate}.xlsx`);
   };
 
   return (
     <div className="space-y-6">
       <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 border-b border-slate-100 pb-6">
           <div>
-            <h2 className="text-2xl font-black flex items-center gap-3"><BarChart3 className="text-blue-600" /> Relatórios de Consumo</h2>
-            <p className="text-[10px] font-black uppercase text-slate-400 mt-1">Análise de rendimento e exportação</p>
+            <h2 className="text-2xl font-black flex items-center gap-3"><BarChart3 className="text-blue-600" /> Relatórios FuelTrack</h2>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setReportTab('consumption')}
+                className={`px-4 py-1.5 font-black uppercase text-[9px] tracking-widest rounded-lg transition-all ${
+                  reportTab === 'consumption'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                Saídas / Consumo
+              </button>
+              <button
+                onClick={() => setReportTab('entries')}
+                className={`px-4 py-1.5 font-black uppercase text-[9px] tracking-widest rounded-lg transition-all ${
+                  reportTab === 'entries'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                Entradas (Frete / Preços)
+              </button>
+            </div>
           </div>
           <button 
             onClick={exportToExcel}
-            className="w-full md:w-auto bg-green-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-100 hover:bg-green-700 transition-all"
+            className="w-full md:w-auto bg-green-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-100 hover:bg-green-700 transition-all border border-green-500/10"
           >
             <FileSpreadsheet size={18} /> Exportar Excel
           </button>
@@ -1209,121 +1443,186 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
            </div>
         </div>
 
-        {selectedVehicleId === 'all' ? (
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Consumo Geral por Ativo</h3>
-            {vehicles.map((v: any) => {
-              const vMs = filteredMovements.filter((m:any) => m.veiculo_id === v.id);
-              const sortedVMs = [...vMs].sort((a,b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
-              const totalL = Math.abs(vMs.reduce((acc:number, curr:any) => acc + curr.litros, 0));
-              
-              let periodMetric = 'N/A';
-              const movementsWithReading = sortedVMs.filter(m => v.usa_medida === MedidaUso.KM ? (m.km_informado !== undefined && m.km_informado !== null) : (m.horimetro_informado !== undefined && m.horimetro_informado !== null));
-
-              if (movementsWithReading.length >= 2) {
-                const first = movementsWithReading[0];
-                const last = movementsWithReading[movementsWithReading.length - 1];
+        {reportTab === 'consumption' ? (
+          selectedVehicleId === 'all' ? (
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Consumo Geral por Ativo</h3>
+              {vehicles.map((v: any) => {
+                const vMs = filteredMovements.filter((m: any) => m.veiculo_id === v.id);
+                const sortedVMs = [...vMs].sort((a, b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+                const totalL = Math.abs(vMs.reduce((acc: number, curr: any) => acc + curr.litros, 0));
                 
-                // Sum liters of all movements between first and last reading (inclusive)
-                // We exclude the first fueling's liters because those liters were consumed BEFORE this period's distance calculation
-                const inBetweenMovements = sortedVMs.filter(m => 
-                   new Date(m.data_hora) >= new Date(first.data_hora) && 
-                   new Date(m.data_hora) <= new Date(last.data_hora)
-                );
-                
-                const totalLitrosCalculo = Math.abs(inBetweenMovements.reduce((acc, curr, idx) => {
-                  // Standard fuel consumption: we count all fuel added AFTER the first reading up to the last reading
-                  return idx === 0 ? acc : acc + curr.litros;
-                }, 0));
+                let periodMetric = 'N/A';
+                const movementsWithReading = sortedVMs.filter(m => v.usa_medida === MedidaUso.KM ? (m.km_informado !== undefined && m.km_informado !== null) : (m.horimetro_informado !== undefined && m.horimetro_informado !== null));
 
-                if (v.usa_medida === MedidaUso.KM) {
-                  const diff = (last.km_informado ?? 0) - (first.km_informado ?? 0);
-                  if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (diff / totalLitrosCalculo).toFixed(2) + ' KM/L';
-                } else {
-                  const diff = (last.horimetro_informado ?? 0) - (first.horimetro_informado ?? 0);
-                  if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (totalLitrosCalculo / diff).toFixed(2) + ' L/H';
+                if (movementsWithReading.length >= 2) {
+                  const first = movementsWithReading[0];
+                  const last = movementsWithReading[movementsWithReading.length - 1];
+                  
+                  const inBetweenMovements = sortedVMs.filter(m => 
+                     new Date(m.data_hora) >= new Date(first.data_hora) && 
+                     new Date(m.data_hora) <= new Date(last.data_hora)
+                  );
+                  
+                  const totalLitrosCalculo = Math.abs(inBetweenMovements.reduce((acc, curr, idx) => {
+                    return idx === 0 ? acc : acc + curr.litros;
+                  }, 0));
+
+                  if (v.usa_medida === MedidaUso.KM) {
+                    const diff = (last.km_informado ?? 0) - (first.km_informado ?? 0);
+                    if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (diff / totalLitrosCalculo).toFixed(2) + ' KM/L';
+                  } else {
+                    const diff = (last.horimetro_informado ?? 0) - (first.horimetro_informado ?? 0);
+                    if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (totalLitrosCalculo / diff).toFixed(2) + ' L/H';
+                  }
                 }
-              }
 
-              return (
-                <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                  <div>
-                    <div className="font-black uppercase text-slate-700">{v.placa_ou_prefixo}</div>
-                    <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
-                    <div className="text-[9px] font-black text-amber-500 uppercase mt-1">Média: {periodMetric}</div>
+                return (
+                  <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                    <div>
+                      <div className="font-black uppercase text-slate-700">{v.placa_ou_prefixo}</div>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
+                      <div className="text-[9px] font-black text-amber-500 uppercase mt-1">Média: {periodMetric}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xl font-black text-slate-900">{totalL.toLocaleString()} <span className="text-xs text-slate-300">L</span></div>
+                      <div className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">Total no período</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xl font-black text-slate-900">{totalL.toLocaleString()} <span className="text-xs text-slate-300">L</span></div>
-                    <div className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">Total no período</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Histórico de Abastecimentos</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="border-b border-slate-100">
+                    <tr>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Data/Hora</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Motorista</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Leitura</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Litros</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Rendimento</th>
+                      {currentUser?.role === 'admin' && (
+                        <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Ações</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredMovements.map((m: any, idx: number) => {
+                      const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
+                      
+                      const vehicleAllMovements = movements
+                        .filter((allM: any) => allM.veiculo_id === m.veiculo_id)
+                        .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+                      
+                      const currentIdx = vehicleAllMovements.findIndex((allM: any) => allM.id === m.id);
+                      let prevM = null;
+                      if (currentIdx > 0) {
+                        for (let i = currentIdx - 1; i >= 0; i--) {
+                          const checkM = vehicleAllMovements[i];
+                          if (vehicle.usa_medida === MedidaUso.KM ? checkM.km_informado : checkM.horimetro_informado) {
+                            prevM = checkM;
+                            break;
+                          }
+                        }
+                      }
+                      const metric = calculateMetric(m, prevM, vehicle);
+
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-4 text-xs font-bold text-slate-600">
+                            {new Date(m.data_hora).toLocaleDateString()} <span className="text-slate-300 ml-1">{new Date(m.data_hora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          </td>
+                          <td className="py-4 text-[10px] font-black uppercase text-slate-400">
+                            {m.motorista || '-'}
+                          </td>
+                          <td className="py-4 text-right text-xs font-bold text-slate-600">
+                            {m.km_informado?.toLocaleString() || m.horimetro_informado?.toLocaleString() || '-'} 
+                            <span className="text-[8px] ml-1 text-slate-300 uppercase">{vehicle?.usa_medida}</span>
+                          </td>
+                          <td className="py-4 text-right text-xs font-black text-slate-900">
+                            {Math.abs(m.litros).toLocaleString()} L
+                          </td>
+                          <td className="py-4 text-right">
+                            {metric ? (
+                              <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">{metric}</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-200 uppercase">N/A</span>
+                            )}
+                          </td>
+                          {currentUser?.role === 'admin' && (
+                            <td className="py-4 text-right">
+                              <button
+                                onClick={() => setEditingMovement(m)}
+                                className="bg-blue-50 text-blue-600 hover:bg-blue-100 p-2 rounded-xl transition-all inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest shadow-sm"
+                              >
+                                <Pencil size={12} /> Editar
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                    {filteredMovements.length === 0 && (
+                      <tr>
+                        <td colSpan={currentUser?.role === 'admin' ? 6 : 5} className="py-20 text-center text-[10px] font-black uppercase text-slate-300 tracking-widest">Nenhum registro encontrado no período</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         ) : (
           <div className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Histórico de Abastecimentos</h3>
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Histórico de Entradas de Óleo Diesel (Abastecimento de Tanques)</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="border-b border-slate-100">
                   <tr>
                     <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Data/Hora</th>
-                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Motorista</th>
-                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Leitura</th>
-                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Litros</th>
-                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Rendimento</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Tanque de Destino</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Quantidade</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Preço Unitário (L)</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Valor Frete</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Valor Total (NF)</th>
+                    <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Observações</th>
                     {currentUser?.role === 'admin' && (
                       <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Ações</th>
                     )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filteredMovements.map((m: any, idx: number) => {
-                    const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
-                    // To get the metric, we need the PREVIOUS movement in chronological order 
-                    // (since current list is DESC, the previous chronological is idx + 1)
-                    // But we must be careful: the list is filtered. 
-                    // For better precision, we'd need to find the movement just before this one in the master list.
-                    
-                    const vehicleAllMovements = movements
-                      .filter((allM: any) => allM.veiculo_id === m.veiculo_id)
-                      .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
-                    
-                    const currentIdx = vehicleAllMovements.findIndex((allM: any) => allM.id === m.id);
-                    // Find previous movement that HAS a reading
-                    let prevM = null;
-                    if (currentIdx > 0) {
-                      for (let i = currentIdx - 1; i >= 0; i--) {
-                        const checkM = vehicleAllMovements[i];
-                        if (vehicle.usa_medida === MedidaUso.KM ? checkM.km_informado : checkM.horimetro_informado) {
-                          prevM = checkM;
-                          break;
-                        }
-                      }
-                    }
-                    const metric = calculateMetric(m, prevM, vehicle);
+                  {filteredMovements.map((m: any) => {
+                    const tName = tanks.find((t: any) => t.id === m.tanque_id)?.nome || m.tanque_id;
+                    const unitPriceVal = m.valor_unitario ? parseFloat(m.valor_unitario) : 0;
+                    const freightVal = m.valor_frete ? parseFloat(m.valor_frete) : 0;
+                    const totalVal = m.valor_total ? parseFloat(m.valor_total) : (unitPriceVal * Math.abs(m.litros) + freightVal);
 
                     return (
                       <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="py-4 text-xs font-bold text-slate-600">
                           {new Date(m.data_hora).toLocaleDateString()} <span className="text-slate-300 ml-1">{new Date(m.data_hora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </td>
-                        <td className="py-4 text-[10px] font-black uppercase text-slate-400">
-                          {m.motorista || '-'}
+                        <td className="py-4 text-xs font-black uppercase text-blue-600">
+                          {tName}
                         </td>
-                        <td className="py-4 text-right text-xs font-bold text-slate-600">
-                          {m.km_informado?.toLocaleString() || m.horimetro_informado?.toLocaleString() || '-'} 
-                          <span className="text-[8px] ml-1 text-slate-300 uppercase">{vehicle?.usa_medida}</span>
-                        </td>
-                        <td className="py-4 text-right text-xs font-black text-slate-900">
+                        <td className="py-4 text-right text-xs font-black text-slate-900 font-mono">
                           {Math.abs(m.litros).toLocaleString()} L
                         </td>
-                        <td className="py-4 text-right">
-                          {metric ? (
-                            <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">{metric}</span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-slate-200 uppercase">N/A</span>
-                          )}
+                        <td className="py-4 text-right text-xs font-bold text-slate-600 font-mono">
+                          {unitPriceVal > 0 ? `R$ ${unitPriceVal.toFixed(3)}` : '-'}
+                        </td>
+                        <td className="py-4 text-right text-xs font-bold text-slate-600 font-mono">
+                          {freightVal > 0 ? `R$ ${freightVal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}
+                        </td>
+                        <td className="py-4 text-right text-xs font-black text-indigo-600 font-mono">
+                          {totalVal > 0 ? `R$ ${totalVal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}
+                        </td>
+                        <td className="py-4 text-xs font-semibold text-slate-500 max-w-xs truncate uppercase">
+                          {m.observacoes || '-'}
                         </td>
                         {currentUser?.role === 'admin' && (
                           <td className="py-4 text-right">
@@ -1340,7 +1639,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                   })}
                   {filteredMovements.length === 0 && (
                     <tr>
-                      <td colSpan={currentUser?.role === 'admin' ? 6 : 5} className="py-20 text-center text-[10px] font-black uppercase text-slate-300 tracking-widest">Nenhum registro encontrado no período</td>
+                      <td colSpan={currentUser?.role === 'admin' ? 8 : 7} className="py-20 text-center text-[10px] font-black uppercase text-slate-300 tracking-widest">Nenhuma entrada de combustível registrada neste período</td>
                     </tr>
                   )}
                 </tbody>
@@ -1357,45 +1656,134 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
             <form onSubmit={saveEditedMovement} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Litros</label>
-                <input required type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={Math.abs(editingMovement.litros)} onChange={e => setEditingMovement({...editingMovement, litros: editingMovement.litros < 0 ? -Math.abs(parseFloat(e.target.value)) : Math.abs(parseFloat(e.target.value))})} />
+                <input 
+                  required 
+                  type="number" 
+                  step="0.01" 
+                  className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                  value={Math.abs(editingMovement.litros)} 
+                  onChange={e => {
+                    const lits = Math.abs(parseFloat(e.target.value)) || 0;
+                    if (editingMovement.tipo_movimento === TipoMovimento.CONSUMO) {
+                      setEditingMovement({...editingMovement, litros: -lits});
+                    } else {
+                      const fVal = parseFloat(editingMovement.valor_frete) || 0;
+                      const uVal = parseFloat(editingMovement.valor_unitario) || 0;
+                      setEditingMovement({
+                        ...editingMovement,
+                        litros: lits,
+                        valor_total: parseFloat((uVal * lits + fVal).toFixed(2))
+                      });
+                    }
+                  }} 
+                />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
-                <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
-                  const val = parseFloat(e.target.value);
-                  if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
-                  else setEditingMovement({...editingMovement, horimetro_informado: val});
-                }} />
-              </div>
-              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo (Admin)</label>
-                  <select 
-                    required 
-                    className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
-                    value={editingMovement.veiculo_id || ''} 
-                    onChange={e => setEditingMovement({...editingMovement, veiculo_id: e.target.value})}
-                  >
-                    <option value="">Selecione Ativo</option>
-                    {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => (
-                      <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
-                    ))}
-                  </select>
-                </div>
+
+              {(editingMovement.tipo_movimento === TipoMovimento.ENTRADA || 
+                editingMovement.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM || 
+                editingMovement.tipo_movimento === TipoMovimento.ENTRADA_OBRA) ? (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Preço Unitário (R$/L)</label>
+                    <input 
+                      type="number" 
+                      step="0.001" 
+                      className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.valor_unitario || ''} 
+                      onChange={e => {
+                        const unit = parseFloat(e.target.value) || 0;
+                        const lits = Math.abs(editingMovement.litros) || 0;
+                        const fr = parseFloat(editingMovement.valor_frete) || 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          valor_unitario: unit,
+                          valor_total: parseFloat((unit * lits + fr).toFixed(2))
+                        });
+                      }} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Valor do Frete (R$)</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.valor_frete || ''} 
+                      onChange={e => {
+                        const fr = parseFloat(e.target.value) || 0;
+                        const unit = parseFloat(editingMovement.valor_unitario) || 0;
+                        const lits = Math.abs(editingMovement.litros) || 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          valor_frete: fr,
+                          valor_total: parseFloat((unit * lits + fr).toFixed(2))
+                        });
+                      }} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Valor Total NF (R$)</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                      value={editingMovement.valor_total || ''} 
+                      onChange={e => {
+                        const tot = parseFloat(e.target.value) || 0;
+                        const fr = parseFloat(editingMovement.valor_frete) || 0;
+                        const lits = Math.abs(editingMovement.litros) || 0;
+                        const unit = lits > 0 ? parseFloat(((tot - fr) / lits).toFixed(3)) : 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          valor_total: tot,
+                          valor_unitario: unit > 0 ? unit : 0
+                        });
+                      }} 
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
+                    <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
+                      const val = parseFloat(e.target.value);
+                      if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
+                      else setEditingMovement({...editingMovement, horimetro_informado: val});
+                    }} />
+                  </div>
+                  {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Ativo (Admin)</label>
+                      <select 
+                        required 
+                        className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                        value={editingMovement.veiculo_id || ''} 
+                        onChange={e => setEditingMovement({...editingMovement, veiculo_id: e.target.value})}
+                      >
+                        <option value="">Selecione Ativo</option>
+                        {[...vehicles].sort((a, b) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo)).map((v:any) => (
+                          <option key={v.id} value={v.id}>{v.placa_ou_prefixo} - {v.modelo}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor (Admin)</label>
+                      <input 
+                        type="text"
+                        className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                        value={editingMovement.motorista || ''} 
+                        onChange={e => setEditingMovement({...editingMovement, motorista: e.target.value})} 
+                      />
+                    </div>
+                  )}
+                </>
               )}
-              {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Condutor (Admin)</label>
-                  <input 
-                    type="text"
-                    className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
-                    value={editingMovement.motorista || ''} 
-                    onChange={e => setEditingMovement({...editingMovement, motorista: e.target.value})} 
-                  />
-                </div>
-              )}
+
               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Destino / Origem</label>
                 <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
                   <option value="britagem">Tanque Britagem</option>
                   <option value="wagner">Tanque Wagner</option>
@@ -1405,11 +1793,22 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                   <option value="obra">Tanque Obra</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Observações</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                  value={editingMovement.observacoes || ''} 
+                  onChange={e => setEditingMovement({...editingMovement, observacoes: e.target.value})} 
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora</label>
                 <input type="datetime-local" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.data_hora.substring(0, 16)} onChange={e => setEditingMovement({...editingMovement, data_hora: e.target.value})} />
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Salvar Alterações</button>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs animate-pulse">Salvar Alterações</button>
               <button type="button" onClick={() => setEditingMovement(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
             </form>
           </div>

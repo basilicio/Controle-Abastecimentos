@@ -36,6 +36,7 @@
         "horimetro_informado": { "type": "number" },
         "valor_total": { "type": "number" },
         "valor_unitario": { "type": "number" },
+        "valor_frete": { "type": "number" },
         "observacoes": { "type": "string" },
         "eficiencia_calculada": { "type": "number" }
       },
