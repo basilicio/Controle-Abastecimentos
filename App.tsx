@@ -646,6 +646,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
   const [unitPrice, setUnitPrice] = useState<string>('');
   const [freightValue, setFreightValue] = useState<string>('');
   const [editingMovement, setEditingMovement] = useState<any>(null);
+  const [dataLancamento, setDataLancamento] = useState<string>('');
 
   const handleUnitPriceInput = (val: string) => {
     setUnitPrice(val);
@@ -738,7 +739,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         km_informado: form.tipo === TipoMovimento.CONSUMO ? parseFloat(form.leitura) : null,
         horimetro_informado: form.tipo === TipoMovimento.CONSUMO ? parseFloat(form.leitura) : null,
         motorista: form.motorista,
-        data_hora: new Date().toISOString(),
+        data_hora: dataLancamento ? new Date(dataLancamento).toISOString() : new Date().toISOString(),
         usuario_id: currentUser.id,
         valor_total: totalValue ? parseFloat(totalValue) : null,
         valor_unitario: unitPrice ? parseFloat(unitPrice) : null,
@@ -791,6 +792,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
       setTotalValue('');
       setUnitPrice('');
       setFreightValue('');
+      setDataLancamento('');
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'movements');
     }
@@ -808,6 +810,17 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                 <option value={TipoMovimento.CONSUMO}>Saída (Abastecimento)</option>
                 <option value={TipoMovimento.ENTRADA}>Entrada de Diesel (NF)</option>
               </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora de Lançamento (Opcional)</label>
+              <input 
+                type="datetime-local" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold font-mono text-xs text-slate-700" 
+                value={dataLancamento} 
+                onChange={e => setDataLancamento(e.target.value)} 
+              />
+              <p className="text-[8px] font-black text-slate-400 ml-2 uppercase tracking-tighter">Deixe vazio para utilizar a data/hora corrente de hoje</p>
             </div>
 
             {form.tipo === TipoMovimento.ENTRADA && (
