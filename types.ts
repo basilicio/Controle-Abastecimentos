@@ -37,6 +37,12 @@ export interface VeiculoEquipamento {
   horimetro_inicial: number;
   ativo: boolean;
   usuario_id?: string; // Quem cadastrou o veículo
+  tacografo_validade?: string; // Data de validade (YYYY-MM-DD)
+  tacografo_afericao?: string; // Data de aferição (YYYY-MM-DD)
+  oleo_data_ultima?: string; // Data da última troca (YYYY-MM-DD)
+  oleo_km_proxima?: number; // KM da próxima troca de óleo
+  oleo_horas_proxima?: number; // Horas da próxima troca de óleo (para equipamentos)
+  controle_manutencao?: boolean; // Se o veículo/equipamento está sob controle de manutenção ativo
 }
 
 export interface MovimentoTanque {
@@ -55,6 +61,9 @@ export interface MovimentoTanque {
   valor_frete?: number; // Valor do frete
   observacoes: string;
   eficiencia_calculada?: number;
+  arla_litros?: number;
+  arla_valor_total?: number;
+  arla_valor_unitario?: number;
 }
 
 export interface Tanque {

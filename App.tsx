@@ -6,7 +6,7 @@ import {
   BarChart3, AlertTriangle, Box, 
   LogOut, ShieldAlert, Settings, AlertCircle, UserPlus, Gauge,
   Pencil, Trash2, X, RefreshCcw, Database, User, ShieldCheck,
-  FileSpreadsheet, Calendar
+  FileSpreadsheet, Calendar, Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -76,8 +76,78 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 const CAPACITY_BRITAGEM = 11000;
 const CAPACITY_OBRA = 3000;
 
+export function getMaintenanceAlerts(vehicles: VeiculoEquipamento[]) {
+  const alerts: { vehicle: VeiculoEquipamento; type: 'tacografo' | 'oleo'; message: string; severity: 'warning' | 'danger'; daysLeft?: number; kmLeft?: number; hoursLeft?: number }[] = [];
+  
+  vehicles.forEach(v => {
+    if (!v.controle_manutencao) return;
+    
+    // 1. Tacógrafo validity check
+    if (v.tacografo_validade) {
+      const expDate = new Date(v.tacografo_validade + 'T00:00:00');
+      const today = new Date();
+      expDate.setHours(0,0,0,0);
+      today.setHours(0,0,0,0);
+      
+      const diffTime = expDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays <= 15) {
+        alerts.push({
+          vehicle: v,
+          type: 'tacografo',
+          message: diffDays < 0 
+            ? `Tacógrafo vencido há ${Math.abs(diffDays)} dias (${new Date(v.tacografo_validade + 'T00:00:00').toLocaleDateString('pt-BR')})`
+            : `Tacógrafo vence em ${diffDays} dias (${new Date(v.tacografo_validade + 'T00:00:00').toLocaleDateString('pt-BR')})`,
+          severity: diffDays < 0 ? 'danger' : 'warning',
+          daysLeft: diffDays
+        });
+      }
+    }
+    
+    // 2. Oil change check
+    const odoAtual = v.odometro_atual ?? 0;
+    const horAtual = v.horimetro_atual ?? 0;
+    
+    if (v.usa_medida === MedidaUso.KM) {
+      if (v.oleo_km_proxima) {
+        const kmLeft = v.oleo_km_proxima - odoAtual;
+        if (kmLeft <= 1000) {
+          alerts.push({
+            vehicle: v,
+            type: 'oleo',
+            message: kmLeft < 0 
+              ? `Troca de óleo vencida há ${Math.abs(kmLeft).toLocaleString()} KM (Limite: ${v.oleo_km_proxima.toLocaleString()} KM / Atual: ${odoAtual.toLocaleString()} KM)`
+              : `Troca de óleo próxima! Faltam apenas ${kmLeft.toLocaleString()} KM (Limite: ${v.oleo_km_proxima.toLocaleString()} KM)`,
+            severity: kmLeft < 0 ? 'danger' : 'warning',
+            kmLeft
+          });
+        }
+      }
+    } else {
+      // Equipment using Hours
+      if (v.oleo_horas_proxima) {
+        const hoursLeft = v.oleo_horas_proxima - horAtual;
+        if (hoursLeft <= 50) {
+          alerts.push({
+            vehicle: v,
+            type: 'oleo',
+            message: hoursLeft < 0 
+              ? `Troca de óleo vencida há ${Math.abs(hoursLeft).toLocaleString()} horas (Limite: ${v.oleo_horas_proxima.toLocaleString()} H / Atual: ${horAtual.toLocaleString()} H)`
+              : `Troca de óleo próxima! Faltam apenas ${hoursLeft.toLocaleString()} horas (Limite: ${v.oleo_horas_proxima.toLocaleString()} H)`,
+            severity: hoursLeft < 0 ? 'danger' : 'warning',
+            hoursLeft
+          });
+        }
+      }
+    }
+  });
+  
+  return alerts;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fleet' | 'movements' | 'tank' | 'reports' | 'users' | 'audit'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fleet' | 'movements' | 'tank' | 'reports' | 'users' | 'audit' | 'maintenance'>('dashboard');
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -92,8 +162,11 @@ export default function App() {
     { id: 'marcus', nome: 'Tanque Marcus', capacidade_litros: 5000, saldo_atual: 0 },
     { id: 'paulo', nome: 'Tanque Paulo', capacidade_litros: 5000, saldo_atual: 0 },
     { id: 'matheus', nome: 'Tanque Matheus', capacidade_litros: 5000, saldo_atual: 0 },
-    { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 }
+    { id: 'obra', nome: 'Tanque Obra', capacidade_litros: CAPACITY_OBRA, saldo_atual: 0 },
+    { id: 'arla', nome: 'Tanque Arla', capacidade_litros: 3000, saldo_atual: 0 }
   ]);
+
+  const maintenanceAlerts = useMemo(() => getMaintenanceAlerts(vehicles), [vehicles]);
 
   // Auth Listener
   useEffect(() => {
@@ -145,9 +218,13 @@ export default function App() {
       
       // Calculate balanced tanks dynamically
       setTanks(prevTanks => prevTanks.map(tank => {
+        if (tank.id === 'arla') {
+          const balance = ms.reduce((acc, curr) => acc + (curr.arla_litros || 0), 0);
+          return { ...tank, saldo_atual: balance };
+        }
         const balance = ms
           .filter(mov => mov.tanque_id === tank.id)
-          .reduce((acc, curr) => acc + curr.litros, 0);
+          .reduce((acc, curr) => acc + (curr.litros || 0), 0);
         return { ...tank, saldo_atual: balance };
       }));
     }, (error) => {
@@ -228,6 +305,7 @@ export default function App() {
         onLogout={handleLogout}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
+        alertsCount={maintenanceAlerts.length}
       />
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
@@ -239,13 +317,14 @@ export default function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} />}
+            {activeTab === 'dashboard' && <DashboardView tanks={tanks} movements={movements} vehicles={vehicles} setActiveTab={setActiveTab} />}
             {activeTab === 'fleet' && <FleetView vehicles={vehicles} users={users} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'movements' && <MovementsView movements={movements} vehicles={vehicles} tanks={tanks} users={users} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'reports' && <ReportsView movements={movements} vehicles={vehicles} tanks={tanks} currentUser={currentUser} logAction={logAction} />}
             {activeTab === 'tank' && <TankView tanks={tanks} movements={movements} />}
             {activeTab === 'users' && currentUser.role === 'admin' && <UserManagementView users={users} logAction={logAction} />}
             {activeTab === 'audit' && currentUser.role === 'admin' && <AuditView logs={logs} logAction={logAction} />}
+            {activeTab === 'maintenance' && <MaintenanceView vehicles={vehicles} currentUser={currentUser} logAction={logAction} />}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -341,7 +420,7 @@ function AuditView({ logs, logAction }: any) {
 
 // Components
 
-function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, isSidebarOpen, setIsSidebarOpen }: any) {
+function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, isSidebarOpen, setIsSidebarOpen, alertsCount = 0 }: any) {
   return (
     <>
       <div className="md:hidden bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
@@ -367,6 +446,13 @@ function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, isSidebarOpen
           <SidebarItem icon={<LayoutDashboard size={18} />} label="Painel" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<Truck size={18} />} label="Frota e Ativos" active={activeTab === 'fleet'} onClick={() => { setActiveTab('fleet'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<History size={18} />} label="Movimentação" active={activeTab === 'movements'} onClick={() => { setActiveTab('movements'); setIsSidebarOpen(false); }} />
+          <SidebarItem icon={<Wrench size={18} />} label="Manutenção" active={activeTab === 'maintenance'} onClick={() => { setActiveTab('maintenance'); setIsSidebarOpen(false); }} badge={
+            alertsCount > 0 ? (
+              <span className="bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                {alertsCount}
+              </span>
+            ) : undefined
+          } />
           <SidebarItem icon={<BarChart3 size={18} />} label="Relatórios" active={activeTab === 'reports'} onClick={() => { setActiveTab('reports'); setIsSidebarOpen(false); }} />
           <SidebarItem icon={<Box size={18} />} label="Estoque Tanque" active={activeTab === 'tank'} onClick={() => { setActiveTab('tank'); setIsSidebarOpen(false); }} />
           {currentUser.role === 'admin' && <SidebarItem icon={<Database size={18} />} label="Auditoria" active={activeTab === 'audit'} onClick={() => { setActiveTab('audit'); setIsSidebarOpen(false); }} />}
@@ -388,25 +474,28 @@ function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, isSidebarOpen
   );
 }
 
-function SidebarItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
+function SidebarItem({ icon, label, active, onClick, badge }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void, badge?: React.ReactNode }) {
   return (
     <li>
       <button
         onClick={onClick}
-        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
           active 
             ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' 
             : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
         }`}
       >
-        <span className={active ? 'text-white' : 'text-slate-400'}>{icon}</span>
-        <span className="uppercase tracking-wide text-[11px] font-black">{label}</span>
+        <div className="flex items-center gap-3">
+          <span className={active ? 'text-white' : 'text-slate-400'}>{icon}</span>
+          <span className="uppercase tracking-wide text-[11px] font-black">{label}</span>
+        </div>
+        {badge}
       </button>
     </li>
   );
 }
 
-function DashboardView({ tanks, movements, vehicles }: any) {
+function DashboardView({ tanks, movements, vehicles, setActiveTab }: any) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
   const monthStr = now.toISOString().substring(0, 7);
@@ -416,14 +505,41 @@ function DashboardView({ tanks, movements, vehicles }: any) {
   const totalConsumedMonth = Math.abs(movements.filter((m: any) => m.litros < 0 && m.data_hora.startsWith(monthStr)).reduce((acc: number, curr: any) => acc + curr.litros, 0));
   const totalConsumedYear = Math.abs(movements.filter((m: any) => m.litros < 0 && m.data_hora.startsWith(yearStr)).reduce((acc: number, curr: any) => acc + curr.litros, 0));
   
+  const totalArlaToday = Math.abs(movements.filter((m: any) => (m.arla_litros || 0) < 0 && m.data_hora.startsWith(todayStr)).reduce((acc: number, curr: any) => acc + (curr.arla_litros || 0), 0));
+  const totalArlaMonth = Math.abs(movements.filter((m: any) => (m.arla_litros || 0) < 0 && m.data_hora.startsWith(monthStr)).reduce((acc: number, curr: any) => acc + (curr.arla_litros || 0), 0));
+  const totalArlaYear = Math.abs(movements.filter((m: any) => (m.arla_litros || 0) < 0 && m.data_hora.startsWith(yearStr)).reduce((acc: number, curr: any) => acc + (curr.arla_litros || 0), 0));
+
+  const alerts = useMemo(() => getMaintenanceAlerts(vehicles), [vehicles]);
+
   return (
     <div className="space-y-6">
       <header><h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Status da Frota</h2></header>
+      
+      {alerts.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="bg-amber-500 text-white p-2.5 rounded-2xl shrink-0">
+              <AlertTriangle size={20} className="animate-pulse" />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-amber-800 uppercase tracking-wider">Avisos de Manutenção Pendentes</div>
+              <div className="text-sm font-bold text-slate-700 mt-0.5">Existem {alerts.length} ativos com alertas de tacógrafo ou óleo pendentes.</div>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveTab('maintenance')}
+            className="w-full sm:w-auto text-[10px] font-black uppercase text-amber-700 bg-amber-100/50 hover:bg-amber-100 px-4 py-2.5 rounded-xl transition-all text-center shrink-0"
+          >
+            Ver Detalhes
+          </button>
+        </div>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Hoje</div>
           <div className="text-3xl font-black text-blue-600">{totalConsumedToday.toLocaleString()} <span className="text-sm text-slate-300">L</span></div>
+          <div className="text-xs font-black text-cyan-600 mt-1 uppercase tracking-wider">Arla: {totalArlaToday.toLocaleString()} L</div>
           <div className="mt-2 h-1 w-12 bg-blue-100 rounded-full overflow-hidden">
             <div className="h-full bg-blue-600" style={{ width: '60%' }}></div>
           </div>
@@ -431,11 +547,13 @@ function DashboardView({ tanks, movements, vehicles }: any) {
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Mensal</div>
           <div className="text-3xl font-black text-slate-900">{totalConsumedMonth.toLocaleString()} <span className="text-sm text-slate-300">L</span></div>
+          <div className="text-xs font-black text-cyan-600 mt-1 uppercase tracking-wider">Arla: {totalArlaMonth.toLocaleString()} L</div>
           <div className="text-[9px] font-black text-slate-400 mt-2 uppercase">Competência: {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(now)}</div>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Anual</div>
           <div className="text-3xl font-black text-slate-900">{totalConsumedYear.toLocaleString()} <span className="text-sm text-slate-300">L</span></div>
+          <div className="text-xs font-black text-cyan-600 mt-1 uppercase tracking-wider">Arla: {totalArlaYear.toLocaleString()} L</div>
           <div className="text-[9px] font-black text-slate-400 mt-2 uppercase">Acumulado {yearStr}</div>
         </div>
       </div>
@@ -448,12 +566,12 @@ function DashboardView({ tanks, movements, vehicles }: any) {
               <div className="space-y-1">
                 <h3 className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">{t.nome}</h3>
                 <div className="text-2xl md:text-4xl font-black text-slate-900 mb-2">{Math.max(0, t.saldo_atual).toLocaleString()} <span className="text-sm md:text-base text-slate-300">L</span></div>
-                <div className="text-[10px] font-black text-blue-600 uppercase">Capacidade: {t.capacidade_litros.toLocaleString()} L</div>
+                <div className={`text-[10px] font-black uppercase ${t.id === 'arla' ? 'text-cyan-600' : 'text-blue-600'}`}>Capacidade: {t.capacidade_litros.toLocaleString()} L</div>
               </div>
               <div className="w-14 h-14 md:w-16 md:h-16 relative">
                 <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
                   <circle cx="18" cy="18" r="16" fill="none" className="text-slate-100" strokeWidth="4" stroke="currentColor" />
-                  <circle cx="18" cy="18" r="16" fill="none" className={percent < 15 ? 'text-red-500' : 'text-blue-600'} strokeWidth="4" strokeDasharray={`${percent}, 100`} strokeLinecap="round" stroke="currentColor" />
+                  <circle cx="18" cy="18" r="16" fill="none" className={percent < 15 ? 'text-red-500' : (t.id === 'arla' ? 'text-cyan-500' : 'text-blue-600')} strokeWidth="4" strokeDasharray={`${percent}, 100`} strokeLinecap="round" stroke="currentColor" />
                 </svg>
               </div>
             </div>
@@ -471,9 +589,10 @@ function DashboardView({ tanks, movements, vehicles }: any) {
         <div className="md:col-span-3 lg:col-span-3 bg-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl flex flex-row md:flex-row items-center justify-between">
           <div className="flex items-center gap-4">
             <Droplets className="text-blue-500" size={32} />
-            <div>
-              <div className="text-[10px] font-black opacity-60 uppercase">Saldo Total</div>
-              <div className="text-2xl font-black">{tanks.reduce((acc: any, t: any) => acc + t.saldo_atual, 0).toLocaleString()} L</div>
+            <div className="space-y-1">
+              <div className="text-[10px] font-black opacity-60 uppercase">Saldos Totais</div>
+              <div className="text-xl font-black">Diesel: {tanks.filter((t: any) => t.id !== 'arla').reduce((acc: any, t: any) => acc + t.saldo_atual, 0).toLocaleString()} L</div>
+              <div className="text-sm font-black text-cyan-400">Arla: {tanks.filter((t: any) => t.id === 'arla').reduce((acc: any, t: any) => acc + t.saldo_atual, 0).toLocaleString()} L</div>
             </div>
           </div>
         </div>
@@ -568,7 +687,7 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
               </div>
               <div>
                 <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Atual</div>
-                <div className="font-bold text-blue-600">{v.usa_medida === MedidaUso.KM ? `${v.odometro_atual.toLocaleString()} KM` : `${v.horimetro_atual.toLocaleString()} H`}</div>
+                <div className="font-bold text-blue-600">{v.usa_medida === MedidaUso.KM ? `${(v.odometro_atual ?? 0).toLocaleString()} KM` : `${(v.horimetro_atual ?? 0).toLocaleString()} H`}</div>
               </div>
             </div>
           </motion.div>
@@ -641,12 +760,16 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
 }
 
 function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: any) {
-  const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', leitura: '', tanqueId: 'britagem' });
+  const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', arlaLitros: '', leitura: '', tanqueId: 'britagem' });
   const [totalValue, setTotalValue] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<string>('');
   const [freightValue, setFreightValue] = useState<string>('');
+  const [arlaTotalValue, setArlaTotalValue] = useState<string>('');
+  const [arlaUnitPrice, setArlaUnitPrice] = useState<string>('');
   const [editingMovement, setEditingMovement] = useState<any>(null);
   const [dataLancamento, setDataLancamento] = useState<string>('');
+  const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
+  const [successMovDetails, setSuccessMovDetails] = useState<any>(null);
 
   const handleUnitPriceInput = (val: string) => {
     setUnitPrice(val);
@@ -676,6 +799,24 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
     if (lits > 0 && totalNum > 0) {
       const dieselPart = totalNum - freightNum;
       setUnitPrice(dieselPart > 0 ? (dieselPart / lits).toFixed(3) : '0.000');
+    }
+  };
+
+  const handleArlaUnitPriceInput = (val: string) => {
+    setArlaUnitPrice(val);
+    const lits = parseFloat(form.arlaLitros) || 0;
+    const unitPriceNum = parseFloat(val) || 0;
+    if (lits > 0 && unitPriceNum > 0) {
+      setArlaTotalValue((unitPriceNum * lits).toFixed(2));
+    }
+  };
+
+  const handleArlaTotalNFInput = (val: string) => {
+    setArlaTotalValue(val);
+    const lits = parseFloat(form.arlaLitros) || 0;
+    const totalNum = parseFloat(val) || 0;
+    if (lits > 0 && totalNum > 0) {
+      setArlaUnitPrice((totalNum / lits).toFixed(3));
     }
   };
   
@@ -729,13 +870,29 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
   const addMov = async (e: any) => {
     e.preventDefault();
     try {
+      const dieselLitros = parseFloat(form.litros) || 0;
+      const arlaLitros = parseFloat(form.arlaLitros) || 0;
+
+      if (form.tanqueId === 'arla') {
+        if (arlaLitros === 0) {
+          alert("Por favor, insira a quantidade de Arla.");
+          return;
+        }
+      } else {
+        if (dieselLitros === 0 && arlaLitros === 0) {
+          alert("Por favor, insira a quantidade de Diesel ou de Arla.");
+          return;
+        }
+      }
+
       const id = Math.random().toString(36).substr(2, 9);
       const mov = {
         id,
         tipo_movimento: form.tipo,
         veiculo_id: form.tipo === TipoMovimento.CONSUMO ? form.veiculoId : null,
         tanque_id: form.tipo === TipoMovimento.CONSUMO ? form.tanqueId : form.tanqueId, // Always use form.tanqueId
-        litros: form.tipo === TipoMovimento.CONSUMO ? -Math.abs(parseFloat(form.litros)) : Math.abs(parseFloat(form.litros)),
+        litros: form.tipo === TipoMovimento.CONSUMO ? -Math.abs(dieselLitros) : Math.abs(dieselLitros),
+        arla_litros: form.tipo === TipoMovimento.CONSUMO ? -Math.abs(arlaLitros) : Math.abs(arlaLitros),
         km_informado: form.tipo === TipoMovimento.CONSUMO ? parseFloat(form.leitura) : null,
         horimetro_informado: form.tipo === TipoMovimento.CONSUMO ? parseFloat(form.leitura) : null,
         motorista: form.motorista,
@@ -744,6 +901,8 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         valor_total: totalValue ? parseFloat(totalValue) : null,
         valor_unitario: unitPrice ? parseFloat(unitPrice) : null,
         valor_frete: freightValue ? parseFloat(freightValue) : null,
+        arla_valor_total: arlaTotalValue ? parseFloat(arlaTotalValue) : null,
+        arla_valor_unitario: arlaUnitPrice ? parseFloat(arlaUnitPrice) : null,
         observacoes: ''
       };
 
@@ -768,7 +927,8 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
               id: transferId,
               tanque_id: targetTankId,
               tipo_movimento: TipoMovimento.ENTRADA,
-              litros: Math.abs(parseFloat(form.litros)),
+              litros: Math.abs(dieselLitros),
+              arla_litros: Math.abs(arlaLitros),
               veiculo_id: null,
               observacoes: `Transferência automática via ${v.placa_ou_prefixo}`
             };
@@ -788,10 +948,35 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
           });
         }
       }
-      setForm({ ...form, litros: '', leitura: '' });
+
+      // Store success details for the confirmation modal
+      const veiculoObj = form.tipo === TipoMovimento.CONSUMO ? vehicles.find((vi: any) => vi.id === form.veiculoId) : null;
+      setSuccessMovDetails({
+        tipo: form.tipo,
+        tanque: form.tanqueId,
+        diesel: dieselLitros,
+        arla: arlaLitros,
+        veiculo: veiculoObj ? `${veiculoObj.placa_ou_prefixo} - ${veiculoObj.modelo}` : null,
+        leitura: form.tipo === TipoMovimento.CONSUMO ? form.leitura : null,
+        motorista: form.tipo === TipoMovimento.CONSUMO ? form.motorista : null
+      });
+      setShowSuccessModal(true);
+
+      // Reset all form and state fields to keep them clean for the next entry
+      setForm({
+        tipo: form.tipo,
+        veiculoId: '',
+        motorista: '',
+        litros: '',
+        arlaLitros: '',
+        leitura: '',
+        tanqueId: 'britagem'
+      });
       setTotalValue('');
       setUnitPrice('');
       setFreightValue('');
+      setArlaTotalValue('');
+      setArlaUnitPrice('');
       setDataLancamento('');
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'movements');
@@ -826,84 +1011,164 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
             {form.tipo === TipoMovimento.ENTRADA && (
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Destino</label>
-                <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => setForm({...form, tanqueId: e.target.value})}>
+                <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => {
+                  const newTankId = e.target.value;
+                  if (newTankId === 'arla') {
+                    setForm({
+                      ...form,
+                      tanqueId: newTankId,
+                      litros: ''
+                    });
+                    setTotalValue('');
+                    setUnitPrice('');
+                    setFreightValue('');
+                  } else {
+                    setForm({
+                      ...form,
+                      tanqueId: newTankId
+                    });
+                  }
+                }}>
                   <option value="britagem">Tanque Britagem</option>
                   <option value="wagner">Tanque Wagner</option>
                   <option value="marcus">Tanque Marcus</option>
                   <option value="paulo">Tanque Paulo</option>
                   <option value="matheus">Tanque Matheus</option>
                   <option value="obra">Tanque Obra</option>
+                  <option value="arla">Tanque Arla</option>
                 </select>
               </div>
             )}
-            
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Quantidade (Litros)</label>
-              <input 
-                placeholder="0,00" 
-                required 
-                type="number" 
-                step="0.01" 
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl" 
-                value={form.litros} 
-                onChange={e => {
-                  const val = e.target.value;
-                  setForm({...form, litros: val});
-                  const lits = parseFloat(val) || 0;
-                  if (lits > 0) {
-                    if (unitPrice) {
-                      const unitPriceNum = parseFloat(unitPrice) || 0;
-                      const freightNum = parseFloat(freightValue) || 0;
-                      setTotalValue((unitPriceNum * lits + freightNum).toFixed(2));
-                    } else if (totalValue) {
-                      const totalNum = parseFloat(totalValue) || 0;
-                      const freightNum = parseFloat(freightValue) || 0;
-                      const dieselPart = totalNum - freightNum;
-                      setUnitPrice(dieselPart > 0 ? (dieselPart / lits).toFixed(3) : '0.000');
+
+            <div className="space-y-4">
+              {form.tanqueId !== 'arla' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Quantidade de Diesel (Litros)</label>
+                  <input 
+                    placeholder="0,00 L" 
+                    type="number" 
+                    step="0.01" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-black text-2xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" 
+                    value={form.litros} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      setForm({...form, litros: val});
+                      const lits = parseFloat(val) || 0;
+                      if (lits > 0) {
+                        if (unitPrice) {
+                          const unitPriceNum = parseFloat(unitPrice) || 0;
+                          const freightNum = parseFloat(freightValue) || 0;
+                          setTotalValue((unitPriceNum * lits + freightNum).toFixed(2));
+                        } else if (totalValue) {
+                          const totalNum = parseFloat(totalValue) || 0;
+                          const freightNum = parseFloat(freightValue) || 0;
+                          const dieselPart = totalNum - freightNum;
+                          setUnitPrice(dieselPart > 0 ? (dieselPart / lits).toFixed(3) : '0.000');
+                        }
+                      }
+                    }} 
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-cyan-600 ml-2">Quantidade de Arla (Litros)</label>
+                <input 
+                  placeholder="0,00 L" 
+                  type="number" 
+                  step="0.01" 
+                  className="w-full bg-slate-50 border border-cyan-200 rounded-2xl px-5 py-4 font-black text-2xl text-cyan-700 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none" 
+                  value={form.arlaLitros} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setForm({...form, arlaLitros: val});
+                    const lits = parseFloat(val) || 0;
+                    if (lits > 0) {
+                      if (arlaUnitPrice) {
+                        const unitPriceNum = parseFloat(arlaUnitPrice) || 0;
+                        setArlaTotalValue((unitPriceNum * lits).toFixed(2));
+                      } else if (arlaTotalValue) {
+                        const totalNum = parseFloat(arlaTotalValue) || 0;
+                        setArlaUnitPrice((totalNum / lits).toFixed(3));
+                      }
                     }
-                  }
-                }} 
-              />
+                  }} 
+                />
+              </div>
             </div>
 
             {(form.tipo === TipoMovimento.ENTRADA || form.tipo === TipoMovimento.ENTRADA_BRITAGEM || form.tipo === TipoMovimento.ENTRADA_OBRA) && (
-              <div className="p-5 bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border border-blue-100 rounded-2xl space-y-4 shadow-inner">
-                <div className="text-[10px] font-black uppercase text-blue-500 tracking-wider">Custo do Abastecimento</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                     <label className="text-[8px] font-black uppercase text-slate-400">Preço Unitário (R$/L)</label>
-                     <input 
-                       type="number" 
-                       step="0.001" 
-                       placeholder="R$ 0,000" 
-                       className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
-                       value={unitPrice} 
-                       onChange={e => handleUnitPriceInput(e.target.value)} 
-                     />
+              <div className="space-y-4">
+                {(parseFloat(form.litros) || 0) > 0 && (
+                  <div className="p-5 bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border border-blue-100 rounded-2xl space-y-4 shadow-inner">
+                    <div className="text-[10px] font-black uppercase text-blue-500 tracking-wider">Custo do Diesel</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                         <label className="text-[8px] font-black uppercase text-slate-400">Preço Unitário (R$/L)</label>
+                         <input 
+                           type="number" 
+                           step="0.001" 
+                           placeholder="R$ 0,000" 
+                           className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                           value={unitPrice} 
+                           onChange={e => handleUnitPriceInput(e.target.value)} 
+                         />
+                      </div>
+                      <div className="space-y-1">
+                         <label className="text-[8px] font-black uppercase text-slate-400">Valor do Frete (R$)</label>
+                         <input 
+                           type="number" 
+                           step="0.01" 
+                           placeholder="R$ 0,00" 
+                           className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                           value={freightValue} 
+                           onChange={e => handleFreightInput(e.target.value)} 
+                         />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-black uppercase text-slate-400">Valor Total NF Diesel (R$)</label>
+                       <input 
+                         type="number" 
+                         step="0.01" 
+                         placeholder="R$ 0,00" 
+                         className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                         value={totalValue} 
+                         onChange={e => handleTotalNFInput(e.target.value)} 
+                       />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                     <label className="text-[8px] font-black uppercase text-slate-400">Valor do Frete (R$)</label>
-                     <input 
-                       type="number" 
-                       step="0.01" 
-                       placeholder="R$ 0,00" 
-                       className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
-                       value={freightValue} 
-                       onChange={e => handleFreightInput(e.target.value)} 
-                     />
+                )}
+
+                {(parseFloat(form.arlaLitros) || 0) > 0 && (
+                  <div className="p-5 bg-gradient-to-br from-cyan-50/70 to-teal-50/50 border border-cyan-100 rounded-2xl space-y-4 shadow-inner">
+                    <div className="text-[10px] font-black uppercase text-cyan-600 tracking-wider">Custo do Arla</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                         <label className="text-[8px] font-black uppercase text-slate-400">Preço Unitário (R$/L)</label>
+                         <input 
+                           type="number" 
+                           step="0.001" 
+                           placeholder="R$ 0,000" 
+                           className="w-full bg-white border border-cyan-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                           value={arlaUnitPrice} 
+                           onChange={e => handleArlaUnitPriceInput(e.target.value)} 
+                         />
+                      </div>
+                      <div className="space-y-1">
+                         <label className="text-[8px] font-black uppercase text-slate-400">Valor Total Arla (R$)</label>
+                         <input 
+                           type="number" 
+                           step="0.01" 
+                           placeholder="R$ 0,00" 
+                           className="w-full bg-white border border-cyan-100 rounded-xl px-3 py-2 text-xs font-bold" 
+                           value={arlaTotalValue} 
+                           onChange={e => handleArlaTotalNFInput(e.target.value)} 
+                         />
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-1">
-                   <label className="text-[8px] font-black uppercase text-slate-400">Valor Total NF (R$)</label>
-                   <input 
-                     type="number" 
-                     step="0.01" 
-                     placeholder="R$ 0,00" 
-                     className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2 text-xs font-bold" 
-                     value={totalValue} 
-                     onChange={e => handleTotalNFInput(e.target.value)} 
-                   />
-                </div>
+                )}
               </div>
             )}
             
@@ -911,13 +1176,28 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
               <>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Origem</label>
-                  <select required className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => setForm({...form, tanqueId: e.target.value as any})}>
+                  <select required className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold" value={form.tanqueId} onChange={e => {
+                    const newTankId = e.target.value;
+                    if (newTankId === 'arla') {
+                      setForm({
+                        ...form,
+                        tanqueId: newTankId,
+                        litros: ''
+                      });
+                    } else {
+                      setForm({
+                        ...form,
+                        tanqueId: newTankId
+                      });
+                    }
+                  }}>
                     <option value="britagem">Tanque Britagem</option>
                     <option value="wagner">Tanque Wagner</option>
                     <option value="marcus">Tanque Marcus</option>
                     <option value="paulo">Tanque Paulo</option>
                     <option value="matheus">Tanque Matheus</option>
                     <option value="obra">Tanque Obra</option>
+                    <option value="arla">Tanque Arla</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -974,7 +1254,9 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
              <div>
                 <div className="text-[10px] font-black text-slate-400 uppercase">{new Date(m.data_hora).toLocaleString()}</div>
                 <div className="font-bold text-slate-900 uppercase">
-                  {m.tipo_movimento === TipoMovimento.CONSUMO ? `Saída: ${vehicles.find((v:any) => v.id === m.veiculo_id)?.placa_ou_prefixo || '?'}` : 'Entrada de Combustível'}
+                  {m.tipo_movimento === TipoMovimento.CONSUMO 
+                    ? `Saída: ${vehicles.find((v:any) => v.id === m.veiculo_id)?.placa_ou_prefixo || '?'}` 
+                    : (m.tanque_id === 'arla' ? 'Entrada de Arla' : 'Entrada de Combustível')}
                 </div>
                 <div className="text-[9px] font-black text-blue-500 uppercase">
                   {m.tipo_movimento} | Tanque: {tanks.find((t:any) => t.id === m.tanque_id)?.nome || m.tanque_id}
@@ -985,8 +1267,17 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   </div>
                 )}
              </div>
-             <div className={`text-xl font-black ${m.litros > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {m.litros > 0 ? '+' : ''}{m.litros.toLocaleString()} L
+             <div className="text-right">
+                {m.litros !== undefined && m.litros !== null && m.litros !== 0 && (
+                  <div className={`text-xl font-black ${m.litros > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {m.litros > 0 ? '+' : ''}{(m.litros ?? 0).toLocaleString()} L Diesel
+                  </div>
+                )}
+                {m.arla_litros !== undefined && m.arla_litros !== null && m.arla_litros !== 0 && (
+                  <div className={`text-sm font-bold ${m.arla_litros > 0 ? 'text-cyan-600' : 'text-cyan-500'}`}>
+                    {m.arla_litros > 0 ? '+' : ''}{(m.arla_litros ?? 0).toLocaleString()} L Arla
+                  </div>
+                )}
              </div>
              {currentUser.role === 'admin' && (
                <div className="flex items-center gap-2 ml-4">
@@ -1012,25 +1303,49 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
           <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl">
             <h3 className="text-xl font-black mb-6">Editar Lançamento</h3>
             <form onSubmit={saveEditedMovement} className="space-y-4">
+              {editingMovement.tanque_id !== 'arla' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Litros (Diesel)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
+                    value={Math.abs(editingMovement.litros || 0)} 
+                    onChange={e => {
+                      const lits = Math.abs(parseFloat(e.target.value)) || 0;
+                      if (editingMovement.tipo_movimento === TipoMovimento.CONSUMO) {
+                        setEditingMovement({...editingMovement, litros: -lits});
+                      } else {
+                        const fVal = parseFloat(editingMovement.valor_frete) || 0;
+                        const uVal = parseFloat(editingMovement.valor_unitario) || 0;
+                        setEditingMovement({
+                          ...editingMovement,
+                          litros: lits,
+                          valor_total: parseFloat((uVal * lits + fVal).toFixed(2))
+                        });
+                      }
+                    }} 
+                  />
+                </div>
+              )}
+
               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Litros</label>
+                <label className="text-[10px] font-black uppercase text-cyan-600 ml-2">Litros (Arla)</label>
                 <input 
-                  required 
                   type="number" 
                   step="0.01" 
-                  className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" 
-                  value={Math.abs(editingMovement.litros)} 
+                  className="w-full bg-slate-50 border border-cyan-200 rounded-2xl px-5 py-3.5 font-bold text-cyan-700" 
+                  value={Math.abs(editingMovement.arla_litros || 0)} 
                   onChange={e => {
-                    const lits = Math.abs(parseFloat(e.target.value)) || 0;
+                    const arlaLits = Math.abs(parseFloat(e.target.value)) || 0;
                     if (editingMovement.tipo_movimento === TipoMovimento.CONSUMO) {
-                      setEditingMovement({...editingMovement, litros: -lits});
+                      setEditingMovement({...editingMovement, arla_litros: -arlaLits});
                     } else {
-                      const fVal = parseFloat(editingMovement.valor_frete) || 0;
-                      const uVal = parseFloat(editingMovement.valor_unitario) || 0;
+                      const uVal = parseFloat(editingMovement.arla_valor_unitario) || 0;
                       setEditingMovement({
                         ...editingMovement,
-                        litros: lits,
-                        valor_total: parseFloat((uVal * lits + fVal).toFixed(2))
+                        arla_litros: arlaLits,
+                        arla_valor_total: parseFloat((uVal * arlaLits).toFixed(2))
                       });
                     }
                   }} 
@@ -1098,6 +1413,49 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                         });
                       }} 
                     />
+                  </div>
+
+                  <div className="p-3 bg-cyan-50/50 border border-cyan-100 rounded-2xl space-y-3 mt-2">
+                    <div className="text-[9px] font-black uppercase text-cyan-600">Arla Financeiro</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase text-slate-400">Arla Unitário (R$/L)</label>
+                        <input 
+                          type="number" 
+                          step="0.001" 
+                          className="w-full bg-white border border-cyan-100 rounded-xl px-3 py-1.5 text-xs font-bold" 
+                          value={editingMovement.arla_valor_unitario || ''} 
+                          onChange={e => {
+                            const unit = parseFloat(e.target.value) || 0;
+                            const lits = Math.abs(editingMovement.arla_litros) || 0;
+                            setEditingMovement({
+                              ...editingMovement,
+                              arla_valor_unitario: unit,
+                              arla_valor_total: parseFloat((unit * lits).toFixed(2))
+                            });
+                          }} 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase text-slate-400">Arla Total (R$)</label>
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          className="w-full bg-white border border-cyan-100 rounded-xl px-3 py-1.5 text-xs font-bold" 
+                          value={editingMovement.arla_valor_total || ''} 
+                          onChange={e => {
+                            const tot = parseFloat(e.target.value) || 0;
+                            const lits = Math.abs(editingMovement.arla_litros) || 0;
+                            const unit = lits > 0 ? parseFloat((tot / lits).toFixed(3)) : 0;
+                            setEditingMovement({
+                              ...editingMovement,
+                              arla_valor_total: tot,
+                              arla_valor_unitario: unit > 0 ? unit : 0
+                            });
+                          }} 
+                        />
+                      </div>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -1168,13 +1526,31 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Destino / Origem</label>
-                <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
+                <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => {
+                  const newTankId = e.target.value;
+                  if (newTankId === 'arla') {
+                    setEditingMovement({
+                      ...editingMovement,
+                      tanque_id: newTankId,
+                      litros: 0,
+                      valor_total: null,
+                      valor_unitario: null,
+                      valor_frete: null
+                    });
+                  } else {
+                    setEditingMovement({
+                      ...editingMovement,
+                      tanque_id: newTankId
+                    });
+                  }
+                }}>
                   <option value="britagem">Tanque Britagem</option>
                   <option value="wagner">Tanque Wagner</option>
                   <option value="marcus">Tanque Marcus</option>
                   <option value="paulo">Tanque Paulo</option>
                   <option value="matheus">Tanque Matheus</option>
                   <option value="obra">Tanque Obra</option>
+                  <option value="arla">Tanque Arla</option>
                 </select>
               </div>
 
@@ -1198,6 +1574,75 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
           </div>
         </div>
       )}
+
+      {showSuccessModal && successMovDetails && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl text-center border border-slate-100"
+          >
+            <div className="bg-green-100 text-green-600 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-inner">
+              <ShieldCheck size={32} />
+            </div>
+            
+            <h3 className="text-xl font-black text-slate-800 tracking-tight">Lançamento Confirmado!</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Lançamento efetuado com sucesso</p>
+            
+            <div className="my-6 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-left space-y-2">
+              <div className="flex justify-between text-xs font-bold border-b border-slate-100 pb-1.5">
+                <span className="text-slate-400 uppercase text-[9px] font-black">Operação</span>
+                <span className="text-slate-700 uppercase font-extrabold">{successMovDetails.tipo === TipoMovimento.CONSUMO ? 'Saída (Abast.)' : 'Entrada (NF)'}</span>
+              </div>
+              
+              {successMovDetails.veiculo && (
+                <div className="flex justify-between text-xs font-bold border-b border-slate-100 pb-1.5">
+                  <span className="text-slate-400 uppercase text-[9px] font-black">Ativo</span>
+                  <span className="text-slate-700 uppercase">{successMovDetails.veiculo}</span>
+                </div>
+              )}
+              
+              {successMovDetails.leitura && (
+                <div className="flex justify-between text-xs font-bold border-b border-slate-100 pb-1.5">
+                  <span className="text-slate-400 uppercase text-[9px] font-black">Leitura</span>
+                  <span className="text-slate-700 font-mono">{successMovDetails.leitura}</span>
+                </div>
+              )}
+
+              {successMovDetails.diesel > 0 && (
+                <div className="flex justify-between text-xs font-bold border-b border-slate-100 pb-1.5">
+                  <span className="text-slate-400 uppercase text-[9px] font-black">Diesel</span>
+                  <span className="text-red-500 font-black">{(successMovDetails.diesel ?? 0).toLocaleString()} L</span>
+                </div>
+              )}
+
+              {successMovDetails.arla > 0 && (
+                <div className="flex justify-between text-xs font-bold border-b border-slate-100 pb-1.5">
+                  <span className="text-slate-400 uppercase text-[9px] font-black">Arla</span>
+                  <span className="text-cyan-600 font-black">{(successMovDetails.arla ?? 0).toLocaleString()} L</span>
+                </div>
+              )}
+
+              {successMovDetails.motorista && (
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-slate-400 uppercase text-[9px] font-black">Motorista</span>
+                  <span className="text-slate-700 uppercase text-[10px] truncate max-w-[150px]">{successMovDetails.motorista}</span>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => {
+                setShowSuccessModal(false);
+                setSuccessMovDetails(null);
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-wider transition-all shadow-md hover:shadow-lg"
+            >
+              Confirmar e Prosseguir
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1206,21 +1651,22 @@ function TankView({ tanks }: any) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
       {tanks.map((t: any) => {
-        const percent = Math.min(100, (t.saldo_atual / t.capacidade_litros) * 100);
+        const percent = Math.min(100, Math.max(0, (t.saldo_atual / t.capacidade_litros) * 100));
+        const isArla = t.id === 'arla';
         return (
           <div key={t.id} className="bg-white p-10 rounded-[44px] border border-slate-200 shadow-sm flex flex-col items-center">
-            <Box size={48} className="text-blue-600 mb-6" />
+            <Box size={48} className={`${isArla ? 'text-cyan-600' : 'text-blue-600'} mb-6`} />
             <h3 className="text-2xl font-black text-slate-900 uppercase mb-8">{t.nome}</h3>
             <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 mb-4">
                <motion.div 
                 initial={{ width: 0 }}
                 animate={{ width: `${percent}%` }}
-                className={`h-full ${percent < 15 ? 'bg-red-500' : 'bg-blue-600'}`} 
+                className={`h-full ${percent < 15 ? 'bg-red-500' : (isArla ? 'bg-cyan-500' : 'bg-blue-600')}`} 
                />
             </div>
             <div className="flex justify-between w-full text-[10px] font-black text-slate-400 uppercase">
                <span>0 L</span>
-               <span>{Math.max(0, t.saldo_atual).toLocaleString()} L</span>
+               <span className={isArla ? 'text-cyan-600 font-bold' : 'text-blue-600 font-bold'}>{Math.max(0, t.saldo_atual).toLocaleString()} L</span>
                <span>{t.capacidade_litros.toLocaleString()} L</span>
             </div>
           </div>
@@ -1323,7 +1769,8 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
           'Tanque Origem': m.tanque_id,
           'Ativo (Placa/Fixo)': vehicle ? vehicle.placa_ou_prefixo : 'N/A',
           'Modelo': vehicle ? vehicle.modelo : 'N/A',
-          'Litros': Math.abs(m.litros),
+          'Litros Diesel': Math.abs(m.litros || 0),
+          'Litros Arla': Math.abs(m.arla_litros || 0),
           'Leitura (KM/H)': m.km_informado || m.horimetro_informado || '',
           'Motorista': m.motorista || ''
         };
@@ -1340,7 +1787,8 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
           'Data/Hora': m.data_hora ? new Date(m.data_hora).toLocaleString() : '',
           'Tipo': m.tipo_movimento,
           'Tanque Destino': m.tanque_id,
-          'Litros Recebidos': Math.abs(m.litros),
+          'Litros Recebidos (Diesel)': Math.abs(m.litros || 0),
+          'Litros Recebidos (Arla)': Math.abs(m.arla_litros || 0),
           'Preço Unitário (R$/L)': m.valor_unitario || 0,
           'Valor do Frete (R$)': m.valor_frete || 0,
           'Valor Total NF (R$)': m.valor_total || 0,
@@ -1556,7 +2004,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                             <span className="text-[8px] ml-1 text-slate-300 uppercase">{vehicle?.usa_medida}</span>
                           </td>
                           <td className="py-4 text-right text-xs font-black text-slate-900">
-                            {Math.abs(m.litros).toLocaleString()} L
+                            {Math.abs(m.litros ?? 0).toLocaleString()} L
                           </td>
                           <td className="py-4 text-right">
                             {metric ? (
@@ -1623,7 +2071,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                           {tName}
                         </td>
                         <td className="py-4 text-right text-xs font-black text-slate-900 font-mono">
-                          {Math.abs(m.litros).toLocaleString()} L
+                          {Math.abs(m.litros ?? 0).toLocaleString()} L
                         </td>
                         <td className="py-4 text-right text-xs font-bold text-slate-600 font-mono">
                           {unitPriceVal > 0 ? `R$ ${unitPriceVal.toFixed(3)}` : '-'}
@@ -1797,13 +2245,31 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tanque de Destino / Origem</label>
-                <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => setEditingMovement({...editingMovement, tanque_id: e.target.value})}>
+                <select className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.tanque_id} onChange={e => {
+                  const newTankId = e.target.value;
+                  if (newTankId === 'arla') {
+                    setEditingMovement({
+                      ...editingMovement,
+                      tanque_id: newTankId,
+                      litros: 0,
+                      valor_total: null,
+                      valor_unitario: null,
+                      valor_frete: null
+                    });
+                  } else {
+                    setEditingMovement({
+                      ...editingMovement,
+                      tanque_id: newTankId
+                    });
+                  }
+                }}>
                   <option value="britagem">Tanque Britagem</option>
                   <option value="wagner">Tanque Wagner</option>
                   <option value="marcus">Tanque Marcus</option>
                   <option value="paulo">Tanque Paulo</option>
                   <option value="matheus">Tanque Matheus</option>
                   <option value="obra">Tanque Obra</option>
+                  <option value="arla">Tanque Arla</option>
                 </select>
               </div>
 
@@ -1981,6 +2447,469 @@ function UserManagementView({ users, logAction }: any) {
               <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase shadow-lg">Salvar Alterações</button>
               <button type="button" onClick={() => setEditingUser(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
             </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaintenanceView({ vehicles, currentUser, logAction }: any) {
+  const [editingVehicle, setEditingVehicle] = useState<any>(null);
+  const [showSelectModal, setShowSelectModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [form, setForm] = useState({
+    tacografo_afericao: '',
+    tacografo_validade: '',
+    oleo_data_ultima: '',
+    oleo_km_proxima: '',
+    oleo_horas_proxima: ''
+  });
+
+  const controlledVehicles = useMemo(() => {
+    return vehicles.filter((v: any) => v.controle_manutencao === true);
+  }, [vehicles]);
+
+  const alerts = useMemo(() => getMaintenanceAlerts(vehicles), [vehicles]);
+
+  const toggleMaintenanceControl = async (v: any) => {
+    try {
+      const oldV = { ...v };
+      const updatedVehicle = {
+        ...v,
+        controle_manutencao: !v.controle_manutencao
+      };
+      await setDoc(doc(db, 'vehicles', v.id), updatedVehicle);
+      await logAction('VEHICLE_MAINTENANCE_TOGGLE', oldV, updatedVehicle);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `vehicles/${v.id}`);
+    }
+  };
+
+  const openEdit = (v: any) => {
+    setEditingVehicle(v);
+    setForm({
+      tacografo_afericao: v.tacografo_afericao || '',
+      tacografo_validade: v.tacografo_validade || '',
+      oleo_data_ultima: v.oleo_data_ultima || '',
+      oleo_km_proxima: v.oleo_km_proxima !== undefined && v.oleo_km_proxima !== null ? String(v.oleo_km_proxima) : '',
+      oleo_horas_proxima: v.oleo_horas_proxima !== undefined && v.oleo_horas_proxima !== null ? String(v.oleo_horas_proxima) : ''
+    });
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingVehicle) return;
+
+    try {
+      const oldV = { ...editingVehicle };
+      const updatedVehicle = {
+        ...editingVehicle,
+        tacografo_afericao: form.tacografo_afericao || null,
+        tacografo_validade: form.tacografo_validade || null,
+        oleo_data_ultima: form.oleo_data_ultima || null,
+        oleo_km_proxima: form.oleo_km_proxima ? parseFloat(form.oleo_km_proxima) : null,
+        oleo_horas_proxima: form.oleo_horas_proxima ? parseFloat(form.oleo_horas_proxima) : null
+      };
+
+      await setDoc(doc(db, 'vehicles', editingVehicle.id), updatedVehicle);
+      await logAction('VEHICLE_MAINTENANCE_UPDATE', oldV, updatedVehicle);
+      setEditingVehicle(null);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `vehicles/${editingVehicle.id}`);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-black tracking-tight">Manutenção de Frota</h2>
+          <p className="text-[10px] font-black uppercase text-slate-400">Controle de Tacógrafos e Troca de Óleo</p>
+        </div>
+        <button
+          onClick={() => setShowSelectModal(true)}
+          className="w-full sm:w-auto bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white hover:border-transparent px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm"
+        >
+          <Settings size={16} /> Selecionar Ativos
+        </button>
+      </div>
+
+      {controlledVehicles.length === 0 ? (
+        <div className="bg-white rounded-[44px] border border-slate-200 p-12 text-center max-w-2xl mx-auto my-8 shadow-sm">
+          <div className="bg-blue-50 text-blue-600 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Wrench size={32} />
+          </div>
+          <h3 className="text-xl font-black text-slate-800 tracking-tight">Nenhum Ativo sob Controle</h3>
+          <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto">
+            A equipe de manutenção deve selecionar os ativos (veículos ou máquinas) que deverão ter seu controle de óleo e tacógrafo ativado.
+          </p>
+          <button
+            onClick={() => setShowSelectModal(true)}
+            className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md hover:shadow-lg inline-flex items-center gap-2"
+          >
+            <PlusCircle size={16} /> Selecionar Ativos para Controle
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Alerts Summary */}
+          {alerts.length > 0 && (
+            <div className="bg-red-50 border border-red-100 rounded-[32px] p-6 space-y-3">
+              <div className="flex items-center gap-2 text-red-600 font-black uppercase text-xs">
+                <AlertTriangle size={18} />
+                <span>Alertas de Manutenção ({alerts.length})</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {alerts.map((al, idx) => (
+                  <div key={idx} className={`p-4 rounded-2xl flex items-start gap-3 border ${
+                    al.severity === 'danger' ? 'bg-red-100/40 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'
+                  }`}>
+                    <div className={`p-1.5 rounded-xl shrink-0 ${al.severity === 'danger' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
+                      <AlertCircle size={14} />
+                    </div>
+                    <div>
+                      <div className="font-black text-xs uppercase tracking-tight">{al.vehicle.placa_ou_prefixo} - {al.vehicle.modelo}</div>
+                      <div className="text-xs font-medium mt-0.5">{al.message}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Main Assets List */}
+          <div className="bg-white rounded-[44px] border border-slate-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Ativo</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Tacógrafo (Validade)</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Troca de Óleo (KM/H Limite)</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Status Geral</th>
+                    <th className="px-8 py-5 text-right"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {controlledVehicles.map((v: any) => {
+                    const odoVal = v.odometro_atual ?? 0;
+                    const horVal = v.horimetro_atual ?? 0;
+
+                    // Tacografo calculations
+                    let tacStatus = 'Não configurado';
+                    let tacColor = 'text-slate-400 bg-slate-50 border-slate-100';
+                    if (v.tacografo_validade) {
+                      const exp = new Date(v.tacografo_validade + 'T00:00:00');
+                      const tod = new Date();
+                      exp.setHours(0,0,0,0);
+                      tod.setHours(0,0,0,0);
+                      const diffDays = Math.ceil((exp.getTime() - tod.getTime()) / (1000 * 60 * 60 * 24));
+                      if (diffDays < 0) {
+                        tacStatus = `Vencido (${new Date(v.tacografo_validade + 'T00:00:00').toLocaleDateString('pt-BR')})`;
+                        tacColor = 'text-red-600 bg-red-50 border-red-100 font-bold';
+                      } else if (diffDays <= 15) {
+                        tacStatus = `Vence em ${diffDays} dias (${new Date(v.tacografo_validade + 'T00:00:00').toLocaleDateString('pt-BR')})`;
+                        tacColor = 'text-amber-600 bg-amber-50 border-amber-100 font-bold animate-pulse';
+                      } else {
+                        tacStatus = `Regular (${new Date(v.tacografo_validade + 'T00:00:00').toLocaleDateString('pt-BR')})`;
+                        tacColor = 'text-green-600 bg-green-50 border-green-100 font-bold';
+                      }
+                    }
+
+                    // Oil calculations
+                    let oilStatus = 'Não configurado';
+                    let oilColor = 'text-slate-400 bg-slate-50 border-slate-100';
+                    if (v.usa_medida === MedidaUso.KM) {
+                      if (v.oleo_km_proxima) {
+                        const diff = v.oleo_km_proxima - odoVal;
+                        if (diff < 0) {
+                          oilStatus = `Vencida há ${Math.abs(diff).toLocaleString()} KM (Limite: ${v.oleo_km_proxima.toLocaleString()})`;
+                          oilColor = 'text-red-600 bg-red-50 border-red-100 font-bold';
+                        } else if (diff <= 1000) {
+                          oilStatus = `Faltam ${diff.toLocaleString()} KM (Limite: ${v.oleo_km_proxima.toLocaleString()})`;
+                          oilColor = 'text-amber-600 bg-amber-50 border-amber-100 font-bold animate-pulse';
+                        } else {
+                          oilStatus = `Faltam ${diff.toLocaleString()} KM (Limite: ${v.oleo_km_proxima.toLocaleString()})`;
+                          oilColor = 'text-green-600 bg-green-50 border-green-100 font-bold';
+                        }
+                      }
+                    } else {
+                      if (v.oleo_horas_proxima) {
+                        const diff = v.oleo_horas_proxima - horVal;
+                        if (diff < 0) {
+                          oilStatus = `Vencida há ${Math.abs(diff).toLocaleString()} H (Limite: ${v.oleo_horas_proxima.toLocaleString()})`;
+                          oilColor = 'text-red-600 bg-red-50 border-red-100 font-bold';
+                        } else if (diff <= 50) {
+                          oilStatus = `Faltam ${diff.toLocaleString()} H (Limite: ${v.oleo_horas_proxima.toLocaleString()})`;
+                          oilColor = 'text-amber-600 bg-amber-50 border-amber-100 font-bold animate-pulse';
+                        } else {
+                          oilStatus = `Faltam ${diff.toLocaleString()} H (Limite: ${v.oleo_horas_proxima.toLocaleString()})`;
+                          oilColor = 'text-green-600 bg-green-50 border-green-100 font-bold';
+                        }
+                      }
+                    }
+
+                    const hasAlert = alerts.some(al => al.vehicle.id === v.id);
+
+                    return (
+                      <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-8 py-6">
+                          <div className="font-black uppercase text-slate-800">{v.placa_ou_prefixo}</div>
+                          <div className="text-xs font-bold text-slate-400 uppercase">{v.modelo}</div>
+                          <div className="text-[10px] text-blue-600 font-bold mt-1 uppercase">
+                            Medição: {v.usa_medida === MedidaUso.KM ? `${odoVal.toLocaleString()} KM` : `${horVal.toLocaleString()} H`}
+                          </div>
+                        </td>
+                        <td className="px-8 py-6 space-y-1">
+                          {v.tacografo_validade ? (
+                            <>
+                              <div className={`text-[9px] px-2.5 py-1 rounded-full border inline-block uppercase tracking-tight ${tacColor}`}>
+                                {tacStatus}
+                              </div>
+                              <div className="text-[9px] text-slate-400 font-bold">
+                                Última Aferição: {v.tacografo_afericao ? new Date(v.tacografo_afericao + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/D'}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 text-xs italic">Não configurado</span>
+                          )}
+                        </td>
+                        <td className="px-8 py-6 space-y-1">
+                          {(v.usa_medida === MedidaUso.KM ? v.oleo_km_proxima : v.oleo_horas_proxima) ? (
+                            <>
+                              <div className={`text-[9px] px-2.5 py-1 rounded-full border inline-block uppercase tracking-tight ${oilColor}`}>
+                                {oilStatus}
+                              </div>
+                              <div className="text-[9px] text-slate-400 font-bold">
+                                Última Troca: {v.oleo_data_ultima ? new Date(v.oleo_data_ultima + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/D'}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 text-xs italic">Não configurado</span>
+                          )}
+                        </td>
+                        <td className="px-8 py-6">
+                          {hasAlert ? (
+                            <span className="flex items-center gap-1.5 text-red-600 text-[10px] font-black uppercase tracking-wider bg-red-50 border border-red-100 px-3 py-1.5 rounded-xl w-fit">
+                              <AlertTriangle size={14} className="animate-bounce" /> Atenção Necessária
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5 text-green-600 text-[10px] font-black uppercase tracking-wider bg-green-50 border border-green-100 px-3 py-1.5 rounded-xl w-fit">
+                              <ShieldCheck size={14} /> Manutenção OK
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-8 py-6 text-right">
+                          <button 
+                            onClick={() => openEdit(v)}
+                            className="bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all shadow-sm flex items-center gap-1.5 ml-auto animate-none hover:shadow"
+                          >
+                            <Pencil size={12} /> Atualizar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Edit Modal */}
+      {editingVehicle && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black">Manutenção de Ativo</h3>
+                <p className="text-[10px] font-black text-blue-600 uppercase mt-0.5">{editingVehicle.placa_ou_prefixo} - {editingVehicle.modelo}</p>
+              </div>
+              <button onClick={() => setEditingVehicle(null)} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleSave} className="space-y-6">
+              {/* Tacografo section */}
+              <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="text-[10px] font-black text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                  <Gauge size={14} /> Tacógrafo
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data da Última Aferição</label>
+                  <input 
+                    type="date" 
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-sm" 
+                    value={form.tacografo_afericao} 
+                    onChange={e => setForm({ ...form, tacografo_afericao: e.target.value })} 
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data de Validade</label>
+                  <input 
+                    type="date" 
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-sm" 
+                    value={form.tacografo_validade} 
+                    onChange={e => setForm({ ...form, tacografo_validade: e.target.value })} 
+                  />
+                </div>
+              </div>
+
+              {/* Oil Change section */}
+              <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="text-[10px] font-black text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                  <Droplets size={14} /> Troca de Óleo
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data da Última Troca</label>
+                  <input 
+                    type="date" 
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-sm" 
+                    value={form.oleo_data_ultima} 
+                    onChange={e => setForm({ ...form, oleo_data_ultima: e.target.value })} 
+                  />
+                </div>
+
+                {editingVehicle.usa_medida === MedidaUso.KM ? (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Próxima Troca (KM Limite)</label>
+                    <input 
+                      type="number" 
+                      placeholder="Ex: 50000"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-sm" 
+                      value={form.oleo_km_proxima} 
+                      onChange={e => setForm({ ...form, oleo_km_proxima: e.target.value })} 
+                    />
+                    <div className="text-[8px] font-bold text-slate-400 ml-2 mt-0.5 uppercase">
+                      Leitura Atual: {(editingVehicle.odometro_atual ?? 0).toLocaleString()} KM
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Próxima Troca (Horímetro Limite)</label>
+                    <input 
+                      type="number" 
+                      placeholder="Ex: 1200"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-sm" 
+                      value={form.oleo_horas_proxima} 
+                      onChange={e => setForm({ ...form, oleo_horas_proxima: e.target.value })} 
+                    />
+                    <div className="text-[8px] font-bold text-slate-400 ml-2 mt-0.5 uppercase">
+                      Leitura Atual: {(editingVehicle.horimetro_atual ?? 0).toLocaleString()} H
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-wider transition-all shadow-md">
+                  Salvar Alterações
+                </button>
+                <button type="button" onClick={() => setEditingVehicle(null)} className="w-full py-2 font-bold text-slate-400 text-xs uppercase tracking-wide hover:text-slate-600 transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Selection Modal */}
+      {showSelectModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[32px] p-8 shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-800">Controle de Ativos</h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">Selecione os ativos monitorados pela manutenção</p>
+              </div>
+              <button onClick={() => setShowSelectModal(false)} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Search filter inside modal */}
+            <div className="relative mb-4">
+              <input 
+                type="text" 
+                placeholder="Buscar placa, prefixo ou modelo..." 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-5 pr-12 py-3.5 text-sm font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {/* Vehicles Checklist */}
+            <div className="overflow-y-auto flex-1 pr-1 space-y-2">
+              {vehicles
+                .filter((v: any) => {
+                  const queryText = searchQuery.toLowerCase();
+                  return (
+                    v.placa_ou_prefixo.toLowerCase().includes(queryText) ||
+                    v.modelo.toLowerCase().includes(queryText)
+                  );
+                })
+                .sort((a: any, b: any) => a.placa_ou_prefixo.localeCompare(b.placa_ou_prefixo))
+                .map((v: any) => {
+                  const isChecked = !!v.controle_manutencao;
+                  return (
+                    <div 
+                      key={v.id} 
+                      onClick={() => toggleMaintenanceControl(v)}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+                        isChecked 
+                          ? 'bg-blue-50/60 border-blue-200 text-blue-950 shadow-sm' 
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                          isChecked 
+                            ? 'bg-blue-600 border-blue-600 text-white' 
+                            : 'border-slate-300 bg-white'
+                        }`}>
+                          {isChecked && <ShieldCheck size={14} />}
+                        </div>
+                        <div>
+                          <div className="font-black uppercase text-sm leading-tight">{v.placa_ou_prefixo}</div>
+                          <div className={`text-[10px] font-bold uppercase ${isChecked ? 'text-blue-500' : 'text-slate-400'}`}>
+                            {v.modelo} • {v.usa_medida === MedidaUso.KM ? 'Odômetro' : 'Horímetro'}
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        {isChecked ? (
+                          <span className="text-[9px] bg-blue-100 text-blue-700 font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                            Ativo
+                          </span>
+                        ) : (
+                          <span className="text-[9px] bg-slate-100 text-slate-500 font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                            Inativo
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              {vehicles.length === 0 && (
+                <div className="text-center py-8 text-slate-400 font-bold text-sm">
+                  Nenhum veículo cadastrado na frota.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 border-t pt-4">
+              <button 
+                onClick={() => setShowSelectModal(false)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-wider transition-all shadow-md"
+              >
+                Concluir Seleção
+              </button>
+            </div>
           </div>
         </div>
       )}

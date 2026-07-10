@@ -38,7 +38,10 @@
         "valor_unitario": { "type": "number" },
         "valor_frete": { "type": "number" },
         "observacoes": { "type": "string" },
-        "eficiencia_calculada": { "type": "number" }
+        "eficiencia_calculada": { "type": "number" },
+        "arla_litros": { "type": "number" },
+        "arla_valor_total": { "type": "number" },
+        "arla_valor_unitario": { "type": "number" }
       },
       "required": ["id", "data_hora", "tipo_movimento", "litros", "usuario_id"]
     },
