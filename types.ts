@@ -64,6 +64,7 @@ export interface MovimentoTanque {
   arla_litros?: number;
   arla_valor_total?: number;
   arla_valor_unitario?: number;
+  foto_leitura?: string; // Base64 da foto do leitor de combustível / odômetro / horímetro
 }
 
 export interface Tanque {

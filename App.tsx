@@ -6,7 +6,7 @@ import {
   BarChart3, AlertTriangle, Box, 
   LogOut, ShieldAlert, Settings, AlertCircle, UserPlus, Gauge,
   Pencil, Trash2, X, RefreshCcw, Database, User, ShieldCheck,
-  FileSpreadsheet, Calendar, Wrench
+  FileSpreadsheet, Calendar, Wrench, Camera, Image, Video
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -759,6 +759,47 @@ function FleetView({ vehicles, users, currentUser, logAction }: any) {
   );
 }
 
+const resizeAndCompressImage = (file: File, maxWidth = 800, maxHeight = 800): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          resolve(dataUrl);
+        } else {
+          resolve(event.target?.result as string);
+        }
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
 function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: any) {
   const [form, setForm] = useState({ tipo: TipoMovimento.CONSUMO, veiculoId: '', motorista: '', litros: '', arlaLitros: '', leitura: '', tanqueId: 'britagem' });
   const [totalValue, setTotalValue] = useState<string>('');
@@ -770,6 +811,9 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
   const [dataLancamento, setDataLancamento] = useState<string>('');
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
   const [successMovDetails, setSuccessMovDetails] = useState<any>(null);
+  const [fotoLeitura, setFotoLeitura] = useState<string>('');
+  const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
 
   const handleUnitPriceInput = (val: string) => {
     setUnitPrice(val);
@@ -903,7 +947,8 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         valor_frete: freightValue ? parseFloat(freightValue) : null,
         arla_valor_total: arlaTotalValue ? parseFloat(arlaTotalValue) : null,
         arla_valor_unitario: arlaUnitPrice ? parseFloat(arlaUnitPrice) : null,
-        observacoes: ''
+        observacoes: '',
+        foto_leitura: form.tipo === TipoMovimento.CONSUMO ? (fotoLeitura || null) : null
       };
 
       await setDoc(doc(db, 'movements', id), mov);
@@ -958,7 +1003,8 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         arla: arlaLitros,
         veiculo: veiculoObj ? `${veiculoObj.placa_ou_prefixo} - ${veiculoObj.modelo}` : null,
         leitura: form.tipo === TipoMovimento.CONSUMO ? form.leitura : null,
-        motorista: form.tipo === TipoMovimento.CONSUMO ? form.motorista : null
+        motorista: form.tipo === TipoMovimento.CONSUMO ? form.motorista : null,
+        foto_leitura: form.tipo === TipoMovimento.CONSUMO ? (fotoLeitura || null) : null
       });
       setShowSuccessModal(true);
 
@@ -978,6 +1024,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
       setArlaTotalValue('');
       setArlaUnitPrice('');
       setDataLancamento('');
+      setFotoLeitura('');
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'movements');
     }
@@ -1215,6 +1262,66 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Motorista / Operador</label>
                   <input placeholder="Nome completo" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.motorista} onChange={e => setForm({...form, motorista: e.target.value})} />
                 </div>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Foto da Leitura (Bomba/Painel) - Opcional</label>
+                  {fotoLeitura ? (
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center">
+                      <img src={fotoLeitura} alt="Foto leitura" className="max-h-48 object-contain rounded-xl w-full" referrerPolicy="no-referrer" />
+                      <button 
+                        type="button" 
+                        onClick={() => setFotoLeitura('')} 
+                        className="mt-2 text-xs font-black text-red-500 uppercase tracking-wider flex items-center gap-1 hover:text-red-700 transition-colors"
+                      >
+                        <Trash2 size={12} /> Remover Foto
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                        <Camera className="text-slate-400 mb-1" size={20} />
+                        <span className="text-[9px] font-black uppercase text-slate-500">Tirar Foto</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment" 
+                          className="hidden" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const compressed = await resizeAndCompressImage(file);
+                                setFotoLeitura(compressed);
+                              } catch (err) {
+                                console.error("Error processing camera image:", err);
+                              }
+                            }
+                          }} 
+                        />
+                      </label>
+                      <label className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                        <Image className="text-slate-400 mb-1" size={20} />
+                        <span className="text-[9px] font-black uppercase text-slate-500">Galeria</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const compressed = await resizeAndCompressImage(file);
+                                setFotoLeitura(compressed);
+                              } catch (err) {
+                                console.error("Error processing gallery image:", err);
+                              }
+                            }
+                          }} 
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
               </>
             )}
             <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-700 transition-all">Lançar Registro</button>
@@ -1251,23 +1358,42 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
 
         {filteredMovements.map((m: any) => (
           <div key={m.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center">
-             <div>
-                <div className="text-[10px] font-black text-slate-400 uppercase">{new Date(m.data_hora).toLocaleString()}</div>
-                <div className="font-bold text-slate-900 uppercase">
-                  {m.tipo_movimento === TipoMovimento.CONSUMO 
-                    ? `Saída: ${vehicles.find((v:any) => v.id === m.veiculo_id)?.placa_ou_prefixo || '?'}` 
-                    : (m.tanque_id === 'arla' ? 'Entrada de Arla' : 'Entrada de Combustível')}
-                </div>
-                <div className="text-[9px] font-black text-blue-500 uppercase">
-                  {m.tipo_movimento} | Tanque: {tanks.find((t:any) => t.id === m.tanque_id)?.nome || m.tanque_id}
-                </div>
-                {m.observacoes && (
-                  <div className="text-[9px] font-bold text-amber-500 uppercase mt-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 inline-block">
-                    {m.observacoes}
-                  </div>
+             <div className="flex items-center gap-4 flex-1 min-w-0">
+                {m.foto_leitura && (
+                  <button 
+                    onClick={() => setViewingPhoto(m.foto_leitura)} 
+                    className="flex-shrink-0 relative group focus:outline-none"
+                    title="Ver foto do leitor"
+                  >
+                    <img 
+                      src={m.foto_leitura} 
+                      alt="Miniatura Leitura" 
+                      className="w-14 h-14 object-cover rounded-2xl border border-slate-200 shadow-sm group-hover:brightness-90 transition-all duration-200" 
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 rounded-2xl flex items-center justify-center transition-opacity duration-200">
+                      <Camera size={14} className="text-white" />
+                    </div>
+                  </button>
                 )}
+                <div className="min-w-0">
+                   <div className="text-[10px] font-black text-slate-400 uppercase">{new Date(m.data_hora).toLocaleString()}</div>
+                   <div className="font-bold text-slate-900 uppercase truncate">
+                     {m.tipo_movimento === TipoMovimento.CONSUMO 
+                       ? `Saída: ${vehicles.find((v:any) => v.id === m.veiculo_id)?.placa_ou_prefixo || '?'}` 
+                       : (m.tanque_id === 'arla' ? 'Entrada de Arla' : 'Entrada de Combustível')}
+                   </div>
+                   <div className="text-[9px] font-black text-blue-500 uppercase">
+                     {m.tipo_movimento} | Tanque: {tanks.find((t:any) => t.id === m.tanque_id)?.nome || m.tanque_id}
+                   </div>
+                   {m.observacoes && (
+                     <div className="text-[9px] font-bold text-amber-500 uppercase mt-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 inline-block">
+                       {m.observacoes}
+                     </div>
+                   )}
+                </div>
              </div>
-             <div className="text-right">
+             <div className="text-right flex-shrink-0">
                 {m.litros !== undefined && m.litros !== null && m.litros !== 0 && (
                   <div className={`text-xl font-black ${m.litros > 0 ? 'text-green-600' : 'text-red-500'}`}>
                     {m.litros > 0 ? '+' : ''}{(m.litros ?? 0).toLocaleString()} L Diesel
@@ -1568,6 +1694,72 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Data/Hora</label>
                 <input type="datetime-local" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.data_hora.substring(0, 16)} onChange={e => setEditingMovement({...editingMovement, data_hora: e.target.value})} />
               </div>
+
+              {editingMovement.foto_leitura ? (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Foto da Leitura</label>
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center">
+                    <img src={editingMovement.foto_leitura} alt="Foto leitura" className="max-h-32 object-contain rounded-xl w-full" referrerPolicy="no-referrer" />
+                    <button 
+                      type="button" 
+                      onClick={() => setEditingMovement({...editingMovement, foto_leitura: null})} 
+                      className="mt-2 text-xs font-black text-red-500 uppercase tracking-wider flex items-center gap-1 hover:text-red-700 transition-colors"
+                    >
+                      <Trash2 size={12} /> Remover Foto
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Adicionar Foto da Leitura</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex flex-col items-center justify-center p-3 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                        <Camera className="text-slate-400 mb-1" size={16} />
+                        <span className="text-[8px] font-black uppercase text-slate-500">Tirar Foto</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment" 
+                          className="hidden" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const compressed = await resizeAndCompressImage(file);
+                                setEditingMovement({...editingMovement, foto_leitura: compressed});
+                              } catch (err) {
+                                console.error("Error processing camera image:", err);
+                              }
+                            }
+                          }} 
+                        />
+                      </label>
+                      <label className="flex flex-col items-center justify-center p-3 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                        <Image className="text-slate-400 mb-1" size={16} />
+                        <span className="text-[8px] font-black uppercase text-slate-500">Galeria</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const compressed = await resizeAndCompressImage(file);
+                                setEditingMovement({...editingMovement, foto_leitura: compressed});
+                              } catch (err) {
+                                console.error("Error processing gallery image:", err);
+                              }
+                            }
+                          }} 
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )
+              )}
+
               <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs animate-pulse">Salvar Alterações</button>
               <button type="button" onClick={() => setEditingMovement(null)} className="w-full py-2 font-bold text-slate-400">Cancelar</button>
             </form>
@@ -1629,6 +1821,13 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   <span className="text-slate-700 uppercase text-[10px] truncate max-w-[150px]">{successMovDetails.motorista}</span>
                 </div>
               )}
+
+              {successMovDetails.foto_leitura && (
+                <div className="pt-2 border-t border-slate-100 flex flex-col items-center">
+                  <span className="text-slate-400 uppercase text-[9px] font-black self-start mb-1">Comprovante de Leitura</span>
+                  <img src={successMovDetails.foto_leitura} alt="Foto comprovante" className="max-h-32 object-contain rounded-xl w-full" referrerPolicy="no-referrer" />
+                </div>
+              )}
             </div>
 
             <button 
@@ -1641,6 +1840,30 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
               Confirmar e Prosseguir
             </button>
           </motion.div>
+        </div>
+      )}
+
+      {viewingPhoto && (
+        <div 
+          className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4"
+          onClick={() => setViewingPhoto(null)}
+        >
+          <div className="relative max-w-2xl w-full bg-black/40 rounded-3xl p-2 flex flex-col items-center">
+            <button 
+              onClick={() => setViewingPhoto(null)}
+              className="absolute -top-12 right-2 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-all"
+            >
+              <X size={24} />
+            </button>
+            <img 
+              src={viewingPhoto} 
+              alt="Visualização da Leitura" 
+              className="max-h-[75vh] max-w-full object-contain rounded-2xl" 
+              onClick={(e) => e.stopPropagation()}
+              referrerPolicy="no-referrer"
+            />
+            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mt-4">Foto do Leitor de Combustível / Bomba</p>
+          </div>
         </div>
       )}
     </div>
