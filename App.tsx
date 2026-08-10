@@ -6,7 +6,7 @@ import {
   BarChart3, AlertTriangle, Box, 
   LogOut, ShieldAlert, Settings, AlertCircle, UserPlus, Gauge,
   Pencil, Trash2, X, RefreshCcw, Database, User, ShieldCheck,
-  FileSpreadsheet, Calendar, Wrench, Camera, Image, Video
+  FileSpreadsheet, Calendar, Wrench, Camera, Image as ImageIcon, Video
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -764,7 +764,7 @@ const resizeAndCompressImage = (file: File, maxWidth = 800, maxHeight = 800): Pr
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
-      const img = new Image();
+      const img = new window.Image();
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
@@ -948,7 +948,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         arla_valor_total: arlaTotalValue ? parseFloat(arlaTotalValue) : null,
         arla_valor_unitario: arlaUnitPrice ? parseFloat(arlaUnitPrice) : null,
         observacoes: '',
-        foto_leitura: form.tipo === TipoMovimento.CONSUMO ? (fotoLeitura || null) : null
+        foto_leitura: fotoLeitura || null
       };
 
       await setDoc(doc(db, 'movements', id), mov);
@@ -1004,7 +1004,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
         veiculo: veiculoObj ? `${veiculoObj.placa_ou_prefixo} - ${veiculoObj.modelo}` : null,
         leitura: form.tipo === TipoMovimento.CONSUMO ? form.leitura : null,
         motorista: form.tipo === TipoMovimento.CONSUMO ? form.motorista : null,
-        foto_leitura: form.tipo === TipoMovimento.CONSUMO ? (fotoLeitura || null) : null
+        foto_leitura: fotoLeitura || null
       });
       setShowSuccessModal(true);
 
@@ -1263,67 +1263,75 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   <input placeholder="Nome completo" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={form.motorista} onChange={e => setForm({...form, motorista: e.target.value})} />
                 </div>
                 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Foto da Leitura (Bomba/Painel) - Opcional</label>
-                  {fotoLeitura ? (
-                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center">
-                      <img src={fotoLeitura} alt="Foto leitura" className="max-h-48 object-contain rounded-xl w-full" referrerPolicy="no-referrer" />
-                      <button 
-                        type="button" 
-                        onClick={() => setFotoLeitura('')} 
-                        className="mt-2 text-xs font-black text-red-500 uppercase tracking-wider flex items-center gap-1 hover:text-red-700 transition-colors"
-                      >
-                        <Trash2 size={12} /> Remover Foto
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
-                        <Camera className="text-slate-400 mb-1" size={20} />
-                        <span className="text-[9px] font-black uppercase text-slate-500">Tirar Foto</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          capture="environment" 
-                          className="hidden" 
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              try {
-                                const compressed = await resizeAndCompressImage(file);
-                                setFotoLeitura(compressed);
-                              } catch (err) {
-                                console.error("Error processing camera image:", err);
-                              }
-                            }
-                          }} 
-                        />
-                      </label>
-                      <label className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
-                        <Image className="text-slate-400 mb-1" size={20} />
-                        <span className="text-[9px] font-black uppercase text-slate-500">Galeria</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              try {
-                                const compressed = await resizeAndCompressImage(file);
-                                setFotoLeitura(compressed);
-                              } catch (err) {
-                                console.error("Error processing gallery image:", err);
-                              }
-                            }
-                          }} 
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
               </>
             )}
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">
+                {form.tipo === TipoMovimento.CONSUMO ? 'Foto da Leitura (Bomba/Painel) - Opcional' : 'Foto do Comprovante / NF - Opcional'}
+              </label>
+              {fotoLeitura ? (
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center">
+                  <img src={fotoLeitura} alt="Foto leitura" className="max-h-48 object-contain rounded-xl w-full" referrerPolicy="no-referrer" />
+                  <button 
+                    type="button" 
+                    onClick={() => setFotoLeitura('')} 
+                    className="mt-2 text-xs font-black text-red-500 uppercase tracking-wider flex items-center gap-1 hover:text-red-700 transition-colors"
+                  >
+                    <Trash2 size={12} /> Remover Foto
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                    <Camera className="text-slate-400 mb-1" size={20} />
+                    <span className="text-[9px] font-black uppercase text-slate-500">Tirar Foto</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="environment" 
+                      className="hidden" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            const compressed = await resizeAndCompressImage(file);
+                            setFotoLeitura(compressed);
+                          } catch (err) {
+                            console.error("Error processing camera image:", err);
+                            alert("Erro ao processar a foto. Por favor, tente novamente com outra imagem.");
+                          }
+                        }
+                        e.target.value = '';
+                      }} 
+                    />
+                  </label>
+                  <label className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                    <ImageIcon className="text-slate-400 mb-1" size={20} />
+                    <span className="text-[9px] font-black uppercase text-slate-500">Galeria</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            const compressed = await resizeAndCompressImage(file);
+                            setFotoLeitura(compressed);
+                          } catch (err) {
+                            console.error("Error processing gallery image:", err);
+                            alert("Erro ao processar a foto. Por favor, tente novamente com outra imagem.");
+                          }
+                        }
+                        e.target.value = '';
+                      }} 
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
             <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-700 transition-all">Lançar Registro</button>
           </form>
         </div>
@@ -1697,7 +1705,7 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
 
               {editingMovement.foto_leitura ? (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Foto da Leitura</label>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Foto da Leitura / Comprovante</label>
                   <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center">
                     <img src={editingMovement.foto_leitura} alt="Foto leitura" className="max-h-32 object-contain rounded-xl w-full" referrerPolicy="no-referrer" />
                     <button 
@@ -1710,54 +1718,56 @@ function MovementsView({ movements, vehicles, tanks, currentUser, logAction }: a
                   </div>
                 </div>
               ) : (
-                editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Adicionar Foto da Leitura</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="flex flex-col items-center justify-center p-3 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
-                        <Camera className="text-slate-400 mb-1" size={16} />
-                        <span className="text-[8px] font-black uppercase text-slate-500">Tirar Foto</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          capture="environment" 
-                          className="hidden" 
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              try {
-                                const compressed = await resizeAndCompressImage(file);
-                                setEditingMovement({...editingMovement, foto_leitura: compressed});
-                              } catch (err) {
-                                console.error("Error processing camera image:", err);
-                              }
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Adicionar Foto da Leitura / Comprovante</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex flex-col items-center justify-center p-3 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                      <Camera className="text-slate-400 mb-1" size={16} />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Tirar Foto</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const compressed = await resizeAndCompressImage(file);
+                              setEditingMovement({...editingMovement, foto_leitura: compressed});
+                            } catch (err) {
+                              console.error("Error processing camera image:", err);
+                              alert("Erro ao processar a foto. Por favor, tente novamente.");
                             }
-                          }} 
-                        />
-                      </label>
-                      <label className="flex flex-col items-center justify-center p-3 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
-                        <Image className="text-slate-400 mb-1" size={16} />
-                        <span className="text-[8px] font-black uppercase text-slate-500">Galeria</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              try {
-                                const compressed = await resizeAndCompressImage(file);
-                                setEditingMovement({...editingMovement, foto_leitura: compressed});
-                              } catch (err) {
-                                console.error("Error processing gallery image:", err);
-                              }
+                          }
+                          e.target.value = '';
+                        }} 
+                      />
+                    </label>
+                    <label className="flex flex-col items-center justify-center p-3 border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-center">
+                      <ImageIcon className="text-slate-400 mb-1" size={16} />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Galeria</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const compressed = await resizeAndCompressImage(file);
+                              setEditingMovement({...editingMovement, foto_leitura: compressed});
+                            } catch (err) {
+                              console.error("Error processing gallery image:", err);
+                              alert("Erro ao processar a foto. Por favor, tente novamente.");
                             }
-                          }} 
-                        />
-                      </label>
-                    </div>
+                          }
+                          e.target.value = '';
+                        }} 
+                      />
+                    </label>
                   </div>
-                )
+                </div>
               )}
 
               <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs animate-pulse">Salvar Alterações</button>
@@ -1901,7 +1911,7 @@ function TankView({ tanks }: any) {
 
 function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any) {
   const [editingMovement, setEditingMovement] = useState<any>(null);
-  const [reportTab, setReportTab] = useState<'consumption' | 'entries'>('consumption');
+  const [reportTab, setReportTab] = useState<'consumption' | 'entries' | 'divergences'>('consumption');
 
   const saveEditedMovement = async (e: any) => {
     e.preventDefault();
@@ -1941,7 +1951,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
       if (selectedVehicleId !== 'all') {
         filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
       }
-    } else {
+    } else if (reportTab === 'entries') {
       filtered = filtered.filter((m: any) => 
         m.tipo_movimento === TipoMovimento.ENTRADA || 
         m.tipo_movimento === TipoMovimento.ENTRADA_BRITAGEM || 
@@ -1953,27 +1963,180 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
     return [...filtered].sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
   }, [movements, startDate, endDate, selectedVehicleId, selectedTankId, reportTab]);
 
-  const calculateMetric = (m: any, prevM: any, vehicle: any) => {
-    if (!prevM || !m || !vehicle) return null;
-    
-    const liters = Math.abs(m.litros);
-    if (liters === 0) return null;
-
-    if (vehicle.usa_medida === MedidaUso.KM) {
-      if (m.km_informado && prevM.km_informado) {
-        const diff = m.km_informado - prevM.km_informado;
-        if (diff <= 0) return null;
-        return (diff / liters).toFixed(2) + ' KM/L';
-      }
+  const getEffectiveReading = (m: any, v: any): number | null => {
+    if (!m || !v) return null;
+    const isKm = v.usa_medida === MedidaUso.KM;
+    if (isKm) {
+      if (typeof m.km_informado === 'number' && m.km_informado > 0) return m.km_informado;
+      if (typeof m.horimetro_informado === 'number' && m.horimetro_informado > 0) return m.horimetro_informado;
+      if (typeof m.leitura === 'number' && m.leitura > 0) return m.leitura;
     } else {
-      if (m.horimetro_informado && prevM.horimetro_informado) {
-        const diff = m.horimetro_informado - prevM.horimetro_informado;
-        if (diff <= 0) return null;
-        return (liters / diff).toFixed(2) + ' L/H';
-      }
+      if (typeof m.horimetro_informado === 'number' && m.horimetro_informado > 0) return m.horimetro_informado;
+      if (typeof m.km_informado === 'number' && m.km_informado > 0) return m.km_informado;
+      if (typeof m.leitura === 'number' && m.leitura > 0) return m.leitura;
     }
     return null;
   };
+
+  const calculateMetric = (m: any, prevM: any, vehicle: any) => {
+    if (!prevM || !m || !vehicle) return null;
+    
+    const liters = Math.abs(m.litros || 0);
+    if (liters === 0) return null;
+
+    const currReading = getEffectiveReading(m, vehicle);
+    const prevReading = getEffectiveReading(prevM, vehicle);
+
+    if (currReading === null || prevReading === null) return null;
+
+    const diff = currReading - prevReading;
+    if (diff <= 0) return null;
+
+    if (vehicle.usa_medida === MedidaUso.KM) {
+      return (diff / liters).toFixed(2) + ' KM/L';
+    } else {
+      return (liters / diff).toFixed(2) + ' L/H';
+    }
+  };
+
+  // Helper to compute standard baseline efficiency for a vehicle (target fill or historical average)
+  const getVehicleBaselineMetric = (vehicle: any) => {
+    if (!vehicle) return null;
+    if (vehicle.consumo_padrao && vehicle.consumo_padrao > 0) {
+      return vehicle.consumo_padrao;
+    }
+
+    const vMovements = movements
+      .filter((m: any) => m.veiculo_id === vehicle.id && m.tipo_movimento === TipoMovimento.CONSUMO)
+      .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+
+    if (vMovements.length < 2) return null;
+
+    const validMetrics: number[] = [];
+
+    for (let i = 1; i < vMovements.length; i++) {
+      const curr = vMovements[i];
+      const prev = vMovements[i - 1];
+      const lits = Math.abs(curr.litros || 0);
+      if (lits === 0) continue;
+
+      const currR = getEffectiveReading(curr, vehicle);
+      const prevR = getEffectiveReading(prev, vehicle);
+
+      if (currR !== null && prevR !== null) {
+        const diff = currR - prevR;
+        if (diff > 0) {
+          if (vehicle.usa_medida === MedidaUso.KM) {
+            validMetrics.push(diff / lits);
+          } else {
+            validMetrics.push(lits / diff);
+          }
+        }
+      }
+    }
+
+    if (validMetrics.length === 0) return null;
+    const sum = validMetrics.reduce((a, b) => a + b, 0);
+    return sum / validMetrics.length;
+  };
+
+  // Compute movements that deviate by more than 10% or have inverted readings
+  const divergencesList = useMemo(() => {
+    const list: any[] = [];
+
+    const dateFiltered = movements.filter((m: any) => {
+      if (m.tipo_movimento !== TipoMovimento.CONSUMO) return false;
+      const date = m.data_hora.split('T')[0];
+      return date >= startDate && date <= endDate;
+    });
+
+    let filtered = dateFiltered;
+    if (selectedTankId !== 'all') {
+      filtered = filtered.filter((m: any) => m.tanque_id === selectedTankId);
+    }
+    if (selectedVehicleId !== 'all') {
+      filtered = filtered.filter((m: any) => m.veiculo_id === selectedVehicleId);
+    }
+
+    filtered.forEach((m: any) => {
+      const vehicle = vehicles.find((v: any) => v.id === m.veiculo_id);
+      if (!vehicle) return;
+
+      const vehicleAllM = movements
+        .filter((allM: any) => allM.veiculo_id === m.veiculo_id && allM.tipo_movimento === TipoMovimento.CONSUMO)
+        .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+
+      const currentIdx = vehicleAllM.findIndex((allM: any) => allM.id === m.id);
+      let prevM = null;
+      if (currentIdx > 0) {
+        for (let i = currentIdx - 1; i >= 0; i--) {
+          const checkM = vehicleAllM[i];
+          if (getEffectiveReading(checkM, vehicle) !== null) {
+            prevM = checkM;
+            break;
+          }
+        }
+      }
+
+      if (!prevM) return;
+
+      const liters = Math.abs(m.litros || 0);
+      const isKm = vehicle.usa_medida === MedidaUso.KM;
+      const readingCurr = getEffectiveReading(m, vehicle);
+      const readingPrev = getEffectiveReading(prevM, vehicle);
+
+      if (readingCurr === null || readingPrev === null) return;
+
+      const diff = readingCurr - readingPrev;
+      const unitLabel = isKm ? 'KM/L' : 'L/H';
+
+      let reason = '';
+      let variationPct = 0;
+      let isDivergent = false;
+      let calculatedMetric = 0;
+
+      if (diff <= 0) {
+        isDivergent = true;
+        reason = `Leitura atual (${readingCurr.toLocaleString()}) é menor ou igual à anterior (${readingPrev.toLocaleString()}). Erro de digitação.`;
+      } else if (liters === 0) {
+        isDivergent = true;
+        reason = `Volume de abastecimento é zero para uma variação de ${diff.toLocaleString()} ${isKm ? 'KM' : 'H'}.`;
+      } else {
+        calculatedMetric = isKm ? (diff / liters) : (liters / diff);
+        const baseline = getVehicleBaselineMetric(vehicle);
+
+        if (baseline && baseline > 0) {
+          variationPct = ((calculatedMetric - baseline) / baseline) * 100;
+
+          // Check if variation exceeds 10%
+          if (Math.abs(variationPct) > 10) {
+            isDivergent = true;
+            const direction = variationPct > 0 ? 'acima' : 'abaixo';
+            reason = `Resultado de ${calculatedMetric.toFixed(2)} ${unitLabel} está ${Math.abs(variationPct).toFixed(1)}% ${direction} do padrão do ativo (${baseline.toFixed(2)} ${unitLabel}). Tolerância: 10%.`;
+          }
+        }
+      }
+
+      if (isDivergent) {
+        list.push({
+          movement: m,
+          vehicle,
+          prevMovement: prevM,
+          diff,
+          liters,
+          readingCurr,
+          readingPrev,
+          calculatedMetric,
+          baseline: getVehicleBaselineMetric(vehicle),
+          variationPct,
+          reason,
+          unitLabel
+        });
+      }
+    });
+
+    return list.sort((a, b) => new Date(b.movement.data_hora).getTime() - new Date(a.movement.data_hora).getTime());
+  }, [movements, vehicles, startDate, endDate, selectedTankId, selectedVehicleId]);
 
   const exportToExcel = () => {
     const workbook = XLSX.utils.book_new();
@@ -2019,14 +2182,133 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
         };
       });
 
+    const divergenciasData = divergencesList.map((d: any) => {
+      return {
+        'Data/Hora': new Date(d.movement.data_hora).toLocaleString(),
+        'Ativo': `${d.vehicle.placa_ou_prefixo} - ${d.vehicle.modelo}`,
+        'Motorista': d.movement.motorista || '',
+        'Tanque': d.movement.tanque_id,
+        'Leitura Informada': d.readingCurr,
+        'Leitura Anterior': d.readingPrev,
+        'Variação': d.diff,
+        'Litros Abastecidos': d.liters,
+        'Resultado Obavido': d.calculatedMetric ? `${d.calculatedMetric.toFixed(2)} ${d.unitLabel}` : 'Erro',
+        'Padrão do Ativo': d.baseline ? `${d.baseline.toFixed(2)} ${d.unitLabel}` : 'N/A',
+        'Desvio %': `${d.variationPct > 0 ? '+' : ''}${d.variationPct.toFixed(1)}%`,
+        'Motivo': d.reason
+      };
+    });
+
     const worksheetSaidas = XLSX.utils.json_to_sheet(saidasData);
     const worksheetEntradas = XLSX.utils.json_to_sheet(entradasData);
+    const worksheetDivergencias = XLSX.utils.json_to_sheet(divergenciasData);
 
     XLSX.utils.book_append_sheet(workbook, worksheetSaidas, 'Consumo (Saídas)');
     XLSX.utils.book_append_sheet(workbook, worksheetEntradas, 'Entradas de Combustível');
+    XLSX.utils.book_append_sheet(workbook, worksheetDivergencias, 'Divergências (>10% Var)');
 
     XLSX.writeFile(workbook, `Relatorio_FuelTrack_${startDate}_a_${endDate}.xlsx`);
   };
+
+  const selectedVehicleStats = useMemo(() => {
+    if (selectedVehicleId === 'all') return null;
+    const vehicle = vehicles.find((v: any) => v.id === selectedVehicleId);
+    if (!vehicle) return null;
+
+    const vPeriodMovements = filteredMovements.filter((m: any) => m.veiculo_id === selectedVehicleId && m.tipo_movimento === TipoMovimento.CONSUMO);
+    const sortedVMs = [...vPeriodMovements].sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+    
+    const totalLiters = Math.abs(vPeriodMovements.reduce((acc: number, curr: any) => acc + (curr.litros || 0), 0));
+
+    const vehicleAllMovements = movements
+      .filter((allM: any) => allM.veiculo_id === selectedVehicleId && allM.tipo_movimento === TipoMovimento.CONSUMO)
+      .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+
+    const periodStepMetrics: number[] = [];
+
+    sortedVMs.forEach((m: any) => {
+      const currentIdx = vehicleAllMovements.findIndex((allM: any) => allM.id === m.id);
+      let prevM = null;
+      if (currentIdx > 0) {
+        for (let i = currentIdx - 1; i >= 0; i--) {
+          const checkM = vehicleAllMovements[i];
+          if (getEffectiveReading(checkM, vehicle) !== null) {
+            prevM = checkM;
+            break;
+          }
+        }
+      }
+      if (prevM) {
+        const currR = getEffectiveReading(m, vehicle);
+        const prevR = getEffectiveReading(prevM, vehicle);
+        const lits = Math.abs(m.litros || 0);
+        if (currR !== null && prevR !== null && lits > 0) {
+          const diff = currR - prevR;
+          if (diff > 0) {
+            if (vehicle.usa_medida === MedidaUso.KM) {
+              periodStepMetrics.push(diff / lits);
+            } else {
+              periodStepMetrics.push(lits / diff);
+            }
+          }
+        }
+      }
+    });
+
+    let periodMetricStr = 'N/A';
+    let initialReading: number | null = null;
+    let finalReading: number | null = null;
+    let totalDeltaReading: number | null = null;
+
+    const movementsWithReading = sortedVMs.filter((m: any) => getEffectiveReading(m, vehicle) !== null);
+
+    if (movementsWithReading.length >= 2) {
+      const first = movementsWithReading[0];
+      const last = movementsWithReading[movementsWithReading.length - 1];
+      initialReading = getEffectiveReading(first, vehicle);
+      finalReading = getEffectiveReading(last, vehicle);
+
+      if (initialReading !== null && finalReading !== null && finalReading > initialReading) {
+        totalDeltaReading = finalReading - initialReading;
+        const inBetweenMovements = sortedVMs.filter((m: any) => 
+          new Date(m.data_hora) >= new Date(first.data_hora) && 
+          new Date(m.data_hora) <= new Date(last.data_hora)
+        );
+        const totalLitrosCalculo = Math.abs(inBetweenMovements.reduce((acc: number, curr: any, idx: number) => {
+          return idx === 0 ? acc : acc + curr.litros;
+        }, 0));
+
+        if (totalLitrosCalculo > 0) {
+          if (vehicle.usa_medida === MedidaUso.KM) {
+            periodMetricStr = (totalDeltaReading / totalLitrosCalculo).toFixed(2) + ' KM/L';
+          } else {
+            periodMetricStr = (totalLitrosCalculo / totalDeltaReading).toFixed(2) + ' L/H';
+          }
+        }
+      }
+    }
+
+    if (periodMetricStr === 'N/A' && periodStepMetrics.length > 0) {
+      const avg = periodStepMetrics.reduce((a, b) => a + b, 0) / periodStepMetrics.length;
+      periodMetricStr = avg.toFixed(2) + (vehicle.usa_medida === MedidaUso.KM ? ' KM/L' : ' L/H');
+    }
+
+    if (initialReading === null && movementsWithReading.length === 1) {
+      initialReading = getEffectiveReading(movementsWithReading[0], vehicle);
+      finalReading = initialReading;
+    }
+
+    return {
+      vehicle,
+      totalLiters,
+      supplyCount: vPeriodMovements.length,
+      periodMetricStr,
+      initialReading,
+      finalReading,
+      totalDeltaReading,
+      unitLabel: vehicle.usa_medida === MedidaUso.KM ? 'KM' : 'Horas'
+    };
+  }, [selectedVehicleId, filteredMovements, movements, vehicles]);
 
   return (
     <div className="space-y-6">
@@ -2034,7 +2316,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 border-b border-slate-100 pb-6">
           <div>
             <h2 className="text-2xl font-black flex items-center gap-3"><BarChart3 className="text-blue-600" /> Relatórios FuelTrack</h2>
-            <div className="flex gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => setReportTab('consumption')}
                 className={`px-4 py-1.5 font-black uppercase text-[9px] tracking-widest rounded-lg transition-all ${
@@ -2054,6 +2336,22 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                 }`}
               >
                 Entradas (Frete / Preços)
+              </button>
+              <button
+                onClick={() => setReportTab('divergences')}
+                className={`px-4 py-1.5 font-black uppercase text-[9px] tracking-widest rounded-lg transition-all flex items-center gap-1.5 ${
+                  reportTab === 'divergences'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                <AlertTriangle size={12} />
+                Divergências (&gt;10% Var)
+                {divergencesList.length > 0 && (
+                  <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full ml-1 shadow-sm">
+                    {divergencesList.length}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -2127,17 +2425,17 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
            </div>
         </div>
 
-        {reportTab === 'consumption' ? (
+        {reportTab === 'consumption' && (
           selectedVehicleId === 'all' ? (
             <div className="space-y-4">
               <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Consumo Geral por Ativo</h3>
               {vehicles.map((v: any) => {
-                const vMs = filteredMovements.filter((m: any) => m.veiculo_id === v.id);
+                const vMs = filteredMovements.filter((m: any) => m.veiculo_id === v.id && m.tipo_movimento === TipoMovimento.CONSUMO);
                 const sortedVMs = [...vMs].sort((a, b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
-                const totalL = Math.abs(vMs.reduce((acc: number, curr: any) => acc + curr.litros, 0));
+                const totalL = Math.abs(vMs.reduce((acc: number, curr: any) => acc + (curr.litros || 0), 0));
                 
                 let periodMetric = 'N/A';
-                const movementsWithReading = sortedVMs.filter(m => v.usa_medida === MedidaUso.KM ? (m.km_informado !== undefined && m.km_informado !== null) : (m.horimetro_informado !== undefined && m.horimetro_informado !== null));
+                const movementsWithReading = sortedVMs.filter(m => getEffectiveReading(m, v) !== null);
 
                 if (movementsWithReading.length >= 2) {
                   const first = movementsWithReading[0];
@@ -2152,21 +2450,70 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                     return idx === 0 ? acc : acc + curr.litros;
                   }, 0));
 
-                  if (v.usa_medida === MedidaUso.KM) {
-                    const diff = (last.km_informado ?? 0) - (first.km_informado ?? 0);
-                    if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (diff / totalLitrosCalculo).toFixed(2) + ' KM/L';
-                  } else {
-                    const diff = (last.horimetro_informado ?? 0) - (first.horimetro_informado ?? 0);
-                    if (diff > 0 && totalLitrosCalculo > 0) periodMetric = (totalLitrosCalculo / diff).toFixed(2) + ' L/H';
+                  const firstR = getEffectiveReading(first, v);
+                  const lastR = getEffectiveReading(last, v);
+
+                  if (firstR !== null && lastR !== null) {
+                    const diff = lastR - firstR;
+                    if (diff > 0 && totalLitrosCalculo > 0) {
+                      if (v.usa_medida === MedidaUso.KM) {
+                        periodMetric = (diff / totalLitrosCalculo).toFixed(2) + ' KM/L';
+                      } else {
+                        periodMetric = (totalLitrosCalculo / diff).toFixed(2) + ' L/H';
+                      }
+                    }
+                  }
+                }
+
+                // Fallback for single movement in period using step metrics
+                if (periodMetric === 'N/A' && vMs.length > 0) {
+                  const vehicleAllMovements = movements
+                    .filter((allM: any) => allM.veiculo_id === v.id && allM.tipo_movimento === TipoMovimento.CONSUMO)
+                    .sort((a: any, b: any) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime());
+
+                  const stepMetrics: number[] = [];
+                  sortedVMs.forEach((m: any) => {
+                    const currentIdx = vehicleAllMovements.findIndex((allM: any) => allM.id === m.id);
+                    let prevM = null;
+                    if (currentIdx > 0) {
+                      for (let i = currentIdx - 1; i >= 0; i--) {
+                        const checkM = vehicleAllMovements[i];
+                        if (getEffectiveReading(checkM, v) !== null) {
+                          prevM = checkM;
+                          break;
+                        }
+                      }
+                    }
+                    if (prevM) {
+                      const currR = getEffectiveReading(m, v);
+                      const prevR = getEffectiveReading(prevM, v);
+                      const lits = Math.abs(m.litros || 0);
+                      if (currR !== null && prevR !== null && lits > 0) {
+                        const diff = currR - prevR;
+                        if (diff > 0) {
+                          if (v.usa_medida === MedidaUso.KM) {
+                            stepMetrics.push(diff / lits);
+                          } else {
+                            stepMetrics.push(lits / diff);
+                          }
+                        }
+                      }
+                    }
+                  });
+                  if (stepMetrics.length > 0) {
+                    const avg = stepMetrics.reduce((a, b) => a + b, 0) / stepMetrics.length;
+                    periodMetric = avg.toFixed(2) + (v.usa_medida === MedidaUso.KM ? ' KM/L' : ' L/H');
                   }
                 }
 
                 return (
-                  <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                  <div key={v.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50 hover:bg-slate-100/50 transition-colors">
                     <div>
                       <div className="font-black uppercase text-slate-700">{v.placa_ou_prefixo}</div>
                       <div className="text-[10px] text-slate-400 font-bold uppercase">{v.modelo}</div>
-                      <div className="text-[9px] font-black text-amber-500 uppercase mt-1">Média: {periodMetric}</div>
+                      <div className="text-[10px] font-black text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60 inline-block uppercase mt-1.5 shadow-sm">
+                        Média no período: {periodMetric}
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className="text-xl font-black text-slate-900">{totalL.toLocaleString()} <span className="text-xs text-slate-300">L</span></div>
@@ -2177,7 +2524,70 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
               })}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {selectedVehicleStats && (
+                <div className="p-6 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl shadow-xl relative overflow-hidden border border-slate-700/50">
+                  <div className="absolute right-0 top-0 opacity-10 translate-x-4 -translate-y-4 pointer-events-none">
+                    <Truck size={180} />
+                  </div>
+                  
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full border border-blue-400/20">
+                          Resumo do Ativo Selecionado
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-widest bg-slate-700/60 text-slate-300 px-2.5 py-1 rounded-full">
+                          {selectedVehicleStats.vehicle.usa_medida}
+                        </span>
+                      </div>
+                      <h2 className="text-2xl font-black uppercase tracking-tight text-white mt-1">
+                        {selectedVehicleStats.vehicle.placa_ou_prefixo}
+                      </h2>
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                        {selectedVehicleStats.vehicle.modelo}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
+                      <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">
+                        <div className="text-[9px] font-black uppercase text-amber-400 tracking-wider">Rendimento Médio</div>
+                        <div className="text-xl font-black text-amber-400 mt-0.5 font-mono">
+                          {selectedVehicleStats.periodMetricStr}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-bold uppercase">No Período</div>
+                      </div>
+
+                      <div className="p-3">
+                        <div className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Consumido</div>
+                        <div className="text-xl font-black text-white mt-0.5">
+                          {selectedVehicleStats.totalLiters.toLocaleString()} <span className="text-xs text-slate-400 font-normal">L</span>
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-bold uppercase">{selectedVehicleStats.supplyCount} Abastecimento(s)</div>
+                      </div>
+
+                      <div className="p-3">
+                        <div className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Leitura Inicial → Final</div>
+                        <div className="text-xs font-black text-white mt-1">
+                          {selectedVehicleStats.initialReading !== null ? selectedVehicleStats.initialReading.toLocaleString() : '-'} → {selectedVehicleStats.finalReading !== null ? selectedVehicleStats.finalReading.toLocaleString() : '-'}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-bold uppercase">No Período</div>
+                      </div>
+
+                      <div className="p-3">
+                        <div className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Variação Medida</div>
+                        <div className="text-xl font-black text-blue-400 mt-0.5 font-mono">
+                          {selectedVehicleStats.totalDeltaReading !== null && selectedVehicleStats.totalDeltaReading > 0 
+                            ? `+${selectedVehicleStats.totalDeltaReading.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${selectedVehicleStats.unitLabel}` 
+                            : '-'}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-bold uppercase">{selectedVehicleStats.unitLabel} Trabalhados</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Histórico de Abastecimentos</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -2206,7 +2616,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                       if (currentIdx > 0) {
                         for (let i = currentIdx - 1; i >= 0; i--) {
                           const checkM = vehicleAllMovements[i];
-                          if (vehicle.usa_medida === MedidaUso.KM ? checkM.km_informado : checkM.horimetro_informado) {
+                          if (getEffectiveReading(checkM, vehicle) !== null) {
                             prevM = checkM;
                             break;
                           }
@@ -2223,7 +2633,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                             {m.motorista || '-'}
                           </td>
                           <td className="py-4 text-right text-xs font-bold text-slate-600">
-                            {m.km_informado?.toLocaleString() || m.horimetro_informado?.toLocaleString() || '-'} 
+                            {getEffectiveReading(m, vehicle)?.toLocaleString() || m.km_informado?.toLocaleString() || m.horimetro_informado?.toLocaleString() || '-'} 
                             <span className="text-[8px] ml-1 text-slate-300 uppercase">{vehicle?.usa_medida}</span>
                           </td>
                           <td className="py-4 text-right text-xs font-black text-slate-900">
@@ -2259,7 +2669,9 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
               </div>
             </div>
           )
-        ) : (
+        )}
+
+        {reportTab === 'entries' && (
           <div className="space-y-4">
             <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Histórico de Entradas de Óleo Diesel (Abastecimento de Tanques)</h3>
             <div className="overflow-x-auto">
@@ -2328,6 +2740,156 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {reportTab === 'divergences' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-red-50/70 border border-red-100 p-5 rounded-2xl flex items-center gap-4 shadow-sm">
+                <div className="p-3 bg-red-500 text-white rounded-xl">
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-red-700">{divergencesList.length}</div>
+                  <div className="text-[10px] font-black uppercase text-red-500 tracking-wider">Divergências Identificadas</div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50/70 border border-amber-100 p-5 rounded-2xl flex items-center gap-4 shadow-sm">
+                <div className="p-3 bg-amber-500 text-white rounded-xl">
+                  <ShieldAlert size={24} />
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-amber-700">10%</div>
+                  <div className="text-[10px] font-black uppercase text-amber-600 tracking-wider">Tolerância Aceitável Padrão</div>
+                </div>
+              </div>
+
+              <div className="bg-blue-50/70 border border-blue-100 p-5 rounded-2xl flex items-center gap-4 shadow-sm">
+                <div className="p-3 bg-blue-600 text-white rounded-xl">
+                  <Pencil size={24} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-blue-900">Correção Direta</div>
+                  <div className="text-[10px] font-black uppercase text-blue-500 tracking-wider">Clique em "Corrigir" para ajustar o lançamento</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                  Lançamentos com Desvio Superior a 10% do Padrão ou Leitura Invertida
+                </h3>
+                <span className="text-[10px] font-bold text-slate-400">
+                  Exibindo {divergencesList.length} divergência(s)
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="border-b border-slate-100">
+                    <tr>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Data/Hora</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Ativo / Modelo</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Motorista</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Leitura Atual (Ant)</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Litros</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Resultado vs Padrão</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Desvio</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400">Motivo da Divergência</th>
+                      <th className="pb-4 text-[9px] font-black uppercase text-slate-400 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {divergencesList.map((item: any) => {
+                      const m = item.movement;
+                      const v = item.vehicle;
+                      const isDanger = item.diff <= 0 || Math.abs(item.variationPct) > 30;
+
+                      return (
+                        <tr key={m.id} className="hover:bg-amber-50/30 transition-colors">
+                          <td className="py-4 text-xs font-bold text-slate-600">
+                            {new Date(m.data_hora).toLocaleDateString()}{' '}
+                            <span className="text-slate-300 ml-1">
+                              {new Date(m.data_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </td>
+                          <td className="py-4">
+                            <div className="text-xs font-black uppercase text-slate-900">{v.placa_ou_prefixo}</div>
+                            <div className="text-[9px] font-bold text-slate-400 uppercase">{v.modelo}</div>
+                          </td>
+                          <td className="py-4 text-[10px] font-black uppercase text-slate-400">
+                            {m.motorista || '-'}
+                          </td>
+                          <td className="py-4 text-right text-xs font-bold text-slate-700">
+                            <div>{item.readingCurr?.toLocaleString()} <span className="text-[8px] text-slate-400">{v.usa_medida}</span></div>
+                            <div className="text-[9px] text-slate-400">Ant: {item.readingPrev?.toLocaleString()} ({item.diff > 0 ? `+${item.diff}` : item.diff})</div>
+                          </td>
+                          <td className="py-4 text-right text-xs font-black text-slate-900">
+                            {item.liters.toLocaleString()} L
+                          </td>
+                          <td className="py-4 text-right">
+                            {item.calculatedMetric > 0 ? (
+                              <div>
+                                <span className="text-[10px] font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  {item.calculatedMetric.toFixed(2)} {item.unitLabel}
+                                </span>
+                                <div className="text-[8px] font-bold text-slate-400 mt-1">
+                                  Padrão: {item.baseline ? item.baseline.toFixed(2) : 'N/A'} {item.unitLabel}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-md">
+                                Erro Leitura
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-4 text-right">
+                            {item.diff <= 0 ? (
+                              <span className="text-[10px] font-black text-white bg-red-600 px-2 py-1 rounded-lg">
+                                Invertida
+                              </span>
+                            ) : (
+                              <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${
+                                isDanger 
+                                  ? 'text-red-700 bg-red-100 border border-red-200' 
+                                  : 'text-amber-700 bg-amber-100 border border-amber-200'
+                              }`}>
+                                {item.variationPct > 0 ? '+' : ''}{item.variationPct.toFixed(1)}%
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-4 text-xs font-medium text-slate-600 max-w-xs">
+                            {item.reason}
+                          </td>
+                          <td className="py-4 text-right">
+                            <button
+                              onClick={() => setEditingMovement(m)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-md flex items-center gap-1.5 ml-auto"
+                            >
+                              <Pencil size={12} /> Corrigir
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {divergencesList.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="py-20 text-center">
+                          <div className="p-4 bg-green-50 rounded-2xl max-w-md mx-auto border border-green-100 text-green-700">
+                            <div className="font-black text-sm uppercase mb-1">Nenhuma Divergência Encontrada</div>
+                            <div className="text-xs">Todos os abastecimentos do período estão dentro da faixa aceitável de 10% de variação em relação ao padrão dos ativos.</div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -2431,9 +2993,12 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-2">KM/Horímetro</label>
                     <input type="number" step="0.01" className="w-full bg-slate-50 border rounded-2xl px-5 py-3.5 font-bold" value={editingMovement.km_informado || editingMovement.horimetro_informado || ''} onChange={e => {
-                      const val = parseFloat(e.target.value);
-                      if (editingMovement.km_informado !== undefined) setEditingMovement({...editingMovement, km_informado: val});
-                      else setEditingMovement({...editingMovement, horimetro_informado: val});
+                      const val = parseFloat(e.target.value) || 0;
+                      setEditingMovement({
+                        ...editingMovement,
+                        km_informado: val,
+                        horimetro_informado: val
+                      });
                     }} />
                   </div>
                   {editingMovement.tipo_movimento === TipoMovimento.CONSUMO && (

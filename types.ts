@@ -43,6 +43,7 @@ export interface VeiculoEquipamento {
   oleo_km_proxima?: number; // KM da próxima troca de óleo
   oleo_horas_proxima?: number; // Horas da próxima troca de óleo (para equipamentos)
   controle_manutencao?: boolean; // Se o veículo/equipamento está sob controle de manutenção ativo
+  consumo_padrao?: number; // Consumo padrão esperado/meta (KM/L ou L/H)
 }
 
 export interface MovimentoTanque {
