@@ -6,7 +6,7 @@ import {
   BarChart3, AlertTriangle, Box, 
   LogOut, ShieldAlert, Settings, AlertCircle, UserPlus, Gauge,
   Pencil, Trash2, X, RefreshCcw, Database, User, ShieldCheck,
-  FileSpreadsheet, Calendar, Wrench, Camera, Image as ImageIcon, Video
+  FileSpreadsheet, Calendar, Wrench, Camera, Image as ImageIcon, Video, Check, CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -17,7 +17,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, orderBy, onSnapshot, collection, query } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy, onSnapshot, collection, query } from 'firebase/firestore';
 import { auth, db } from './src/lib/firebase';
 import { 
   TipoVeiculo, MedidaUso, TipoMovimento, VeiculoEquipamento, 
@@ -2046,6 +2046,7 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
 
     const dateFiltered = movements.filter((m: any) => {
       if (m.tipo_movimento !== TipoMovimento.CONSUMO) return false;
+      if (m.divergencia_ok || m.divergencia_resolvida) return false;
       const date = m.data_hora.split('T')[0];
       return date >= startDate && date <= endDate;
     });
@@ -2137,6 +2138,25 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
 
     return list.sort((a, b) => new Date(b.movement.data_hora).getTime() - new Date(a.movement.data_hora).getTime());
   }, [movements, vehicles, startDate, endDate, selectedTankId, selectedVehicleId]);
+
+  const handleResolveDivergence = async (movementId: string) => {
+    try {
+      const movRef = doc(db, 'movements', movementId);
+      await updateDoc(movRef, {
+        divergencia_ok: true,
+        divergencia_resolvida_por: currentUser?.name || currentUser?.email || 'Usuário',
+        divergencia_resolvida_em: new Date().toISOString()
+      });
+
+      const m = movements.find(mov => mov.id === movementId);
+      if (m) {
+        await logAction('RESOLVER_DIVERGENCIA', m, { ...m, divergencia_ok: true });
+      }
+    } catch (err) {
+      console.error('Erro ao aprovar divergência:', err);
+      alert('Não foi possível registrar o OK na divergência.');
+    }
+  };
 
   const exportToExcel = () => {
     const workbook = XLSX.utils.book_new();
@@ -2866,12 +2886,21 @@ function ReportsView({ movements, vehicles, tanks, currentUser, logAction }: any
                             {item.reason}
                           </td>
                           <td className="py-4 text-right">
-                            <button
-                              onClick={() => setEditingMovement(m)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-md flex items-center gap-1.5 ml-auto"
-                            >
-                              <Pencil size={12} /> Corrigir
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleResolveDivergence(m.id)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-md flex items-center gap-1 cursor-pointer"
+                                title="Dar OK e remover da lista de divergências"
+                              >
+                                <Check size={12} /> OK
+                              </button>
+                              <button
+                                onClick={() => setEditingMovement(m)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-md flex items-center gap-1.5"
+                              >
+                                <Pencil size={12} /> Corrigir
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
